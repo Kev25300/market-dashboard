@@ -863,8 +863,8 @@
     </div>
   </div>
   <div class="api-key-bar">
-    <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-muted);">FMP API KEY</span>
-    <input class="api-input" type="password" id="apiKeyInput" placeholder="Enter your FMP API key…" />
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-muted);">DATA</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);background:rgba(0,229,160,0.08);border:1px solid rgba(0,229,160,0.2);padding:4px 10px;border-radius:4px;">YAHOO FINANCE</span>
     <button class="btn" id="loadBtn" onclick="initDashboard()">LOAD</button>
     <button class="btn" id="diagBtn" onclick="runDiagnostics()" style="background:var(--surface3);color:var(--gold);border:1px solid var(--border2);">DIAGNOSE</button>
     <span class="last-updated" id="lastUpdated"></span>
@@ -1119,87 +1119,79 @@
 
 <script>
 // ============================================================
-// CONFIG
+// CONFIG — Yahoo Finance tickers
 // ============================================================
 const INDICES = [
-  { display: 'SPX',  name: 'S&P 500',          fmpTicker: 'SPY'   },
-  { display: 'DJIA', name: 'Dow Jones',          fmpTicker: 'DIA'   },
-  { display: 'COMP', name: 'Nasdaq Composite',   fmpTicker: 'QQQ'   },
-  { display: 'NYA',  name: 'NYSE Composite',     fmpTicker: 'NYC'   },
-  { display: 'FTSE', name: 'FTSE 100',           fmpTicker: 'ISF.L' },
-  { display: 'NKY',  name: 'Nikkei 225',         fmpTicker: 'EWJ'   },
+  { display: 'SPX',  name: 'S&P 500',         ticker: '^GSPC' },
+  { display: 'DJIA', name: 'Dow Jones',         ticker: '^DJI'  },
+  { display: 'COMP', name: 'Nasdaq Composite',  ticker: '^IXIC' },
+  { display: 'NYA',  name: 'NYSE Composite',    ticker: '^NYA'  },
+  { display: 'FTSE', name: 'FTSE 100',          ticker: '^FTSE' },
+  { display: 'TOPIX',name: 'TOPIX',             ticker: '^N225' },
 ];
 const MAG7 = [
-  { ticker: 'AAPL', name: 'Apple'    },
-  { ticker: 'MSFT', name: 'Microsoft'},
-  { ticker: 'NVDA', name: 'NVIDIA'   },
-  { ticker: 'AMZN', name: 'Amazon'   },
-  { ticker: 'GOOGL', name: 'Alphabet'},
-  { ticker: 'META', name: 'Meta'     },
-  { ticker: 'TSLA', name: 'Tesla'    },
+  { ticker: 'AAPL',  name: 'Apple'    },
+  { ticker: 'MSFT',  name: 'Microsoft'},
+  { ticker: 'NVDA',  name: 'NVIDIA'   },
+  { ticker: 'AMZN',  name: 'Amazon'   },
+  { ticker: 'GOOGL', name: 'Alphabet' },
+  { ticker: 'META',  name: 'Meta'     },
+  { ticker: 'TSLA',  name: 'Tesla'    },
 ];
 const MSCI_ETFS = [
-  { ticker: 'IYW', fullName: 'MSCI Info Technology'   },
-  { ticker: 'IYH', fullName: 'MSCI Health Care'       },
-  { ticker: 'IYF', fullName: 'MSCI Financials'        },
-  { ticker: 'IYC', fullName: 'MSCI Consumer Discr.'   },
-  { ticker: 'IYK', fullName: 'MSCI Consumer Staples'  },
-  { ticker: 'IYE', fullName: 'MSCI Energy'            },
-  { ticker: 'IYM', fullName: 'MSCI Materials'         },
-  { ticker: 'IYJ', fullName: 'MSCI Industrials'       },
-  { ticker: 'IDU', fullName: 'MSCI Utilities'         },
-  { ticker: 'IYR', fullName: 'MSCI Real Estate'       },
-  { ticker: 'IYZ', fullName: 'MSCI Comm. Services'    },
+  { ticker: 'IYW',  fullName: 'MSCI Info Technology'  },
+  { ticker: 'IYH',  fullName: 'MSCI Health Care'      },
+  { ticker: 'IYF',  fullName: 'MSCI Financials'       },
+  { ticker: 'IYC',  fullName: 'MSCI Consumer Discr.'  },
+  { ticker: 'IYK',  fullName: 'MSCI Consumer Staples' },
+  { ticker: 'IYE',  fullName: 'MSCI Energy'           },
+  { ticker: 'IYM',  fullName: 'MSCI Materials'        },
+  { ticker: 'IYJ',  fullName: 'MSCI Industrials'      },
+  { ticker: 'IDU',  fullName: 'MSCI Utilities'        },
+  { ticker: 'IYR',  fullName: 'MSCI Real Estate'      },
+  { ticker: 'IYZ',  fullName: 'MSCI Comm. Services'   },
 ];
 const INDEX_CONSTITUENTS = {
-  SPY: ['AAPL','MSFT','NVDA','AMZN','META','GOOGL','BRK-B','TSLA','LLY','AVGO'],
-  DIA: ['GS','UNH','HD','MSFT','CAT','AMGN','CRM','MCD','V','AXP'],
-  QQQ: ['AAPL','MSFT','NVDA','AMZN','META','GOOGL','TSLA','AVGO','COST','NFLX'],
+  '^GSPC': ['AAPL','MSFT','NVDA','AMZN','META','GOOGL','BRK-B','TSLA','LLY','AVGO'],
+  '^DJI':  ['GS','UNH','HD','MSFT','CAT','AMGN','CRM','MCD','V','AXP'],
+  '^IXIC': ['AAPL','MSFT','NVDA','AMZN','META','GOOGL','TSLA','AVGO','COST','NFLX'],
 };
 const RATES = {
-  UK: { rate:'4.50', nextDate:'2025-05-07', label:'7 May 2025'    },
-  CA: { rate:'2.75', nextDate:'2025-04-16', label:'16 April 2025' },
-  US: { rate:'4.50', nextDate:'2025-05-07', label:'7 May 2025'    },
+  UK: { rate:'4.25', nextDate:'2025-06-19', label:'19 June 2025'   },
+  CA: { rate:'2.75', nextDate:'2025-06-04', label:'4 June 2025'    },
+  US: { rate:'4.50', nextDate:'2025-06-18', label:'18 June 2025'   },
 };
 const FX_PAIRS = {
-  GBPCAD: { label:'GBP / CAD', fmpSymbol:'GBPCAD' },
-  USDCAD: { label:'USD / CAD', fmpSymbol:'USDCAD' },
+  GBPCAD: { label:'GBP / CAD', yhSymbol:'GBPCAD=X' },
+  USDCAD: { label:'USD / CAD', yhSymbol:'USDCAD=X' },
 };
+
+// Yahoo Finance proxy — routes around CORS
+const YH_PROXY = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+const YH_PROXY2 = 'https://query2.finance.yahoo.com/v8/finance/chart/';
 
 // ============================================================
 // STATE
 // ============================================================
-let apiKey       = '';
 let activeIndex  = null;
 let activeFXPair = 'GBPCAD';
-
-// In-memory runtime cache (avoids duplicate fetches within a session)
 const mem = {};
 
 // ============================================================
-// SESSION STORAGE CACHE  (opt-2: persist across page refreshes)
-// Keys: "fmp_quote_<ticker>", "fmp_hist_<ticker>", "fmp_fx_<pair>"
-// Each entry: { ts: <epoch-ms>, data: <payload> }
-// Quotes expire after 20 min; history after 4 hours; FX after 30 min
+// SESSION STORAGE CACHE
+// Quotes: 20 min  |  History: 4 hrs  |  FX: 30 min
 // ============================================================
 const CACHE_TTL = { quote: 20*60*1000, hist: 4*60*60*1000, fx: 30*60*1000 };
 
 function scRead(key) {
-  try {
-    const raw = sessionStorage.getItem(key);
-    if (!raw) return null;
-    const { ts, data } = JSON.parse(raw);
-    return { ts, data };
-  } catch { return null; }
+  try { const r = sessionStorage.getItem(key); return r ? JSON.parse(r) : null; } catch { return null; }
 }
 function scWrite(key, data) {
   try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
 }
 function scFresh(key, ttl) {
-  const entry = scRead(key);
-  if (!entry) return null;
-  if (Date.now() - entry.ts > ttl) return null;
-  return entry.data;
+  const e = scRead(key); if (!e) return null;
+  return (Date.now() - e.ts > ttl) ? null : e.data;
 }
 
 // ============================================================
@@ -1225,11 +1217,9 @@ function setProgressBar(frac) {
 }
 
 // ============================================================
-// INIT
+// INIT — no API key required for Yahoo Finance
 // ============================================================
 function initDashboard() {
-  apiKey = document.getElementById('apiKeyInput').value.trim();
-  if (!apiKey) { showError('Please enter your FMP API key.'); return; }
   hideError();
   document.getElementById('loadBtn').disabled = true;
   document.getElementById('loadBtn').textContent = 'LOADING…';
@@ -1239,22 +1229,19 @@ function initDashboard() {
 async function loadAll() {
   try {
     populateRates();
-
-    // Count total tickers for progress bar
     const allTickers = [
-      ...INDICES.map(i => i.fmpTicker),
+      ...INDICES.map(i => i.ticker),
       ...MAG7.map(s => s.ticker),
       ...MSCI_ETFS.map(e => e.ticker),
-      'VIX',
+      '^VIX',
     ];
-    // Each ticker = 1 quote + 1 history = 2 units; FX = 2 pairs
-    progressInit(allTickers.length * 2 + 2);
+    // Each ticker = 1 combined call (quote + history together) + FX = 2
+    progressInit(allTickers.length + 2);
 
-    // Kick off all sections fully in parallel — cards render as each resolves
     await Promise.all([
-      loadSection(INDICES.map(i => i.fmpTicker), 'indicesGrid', INDICES, true),
-      loadSection(MAG7.map(s => s.ticker),        'mag7Grid',    MAG7.map(s => ({...s, display: s.ticker})), false),
-      loadSection(MSCI_ETFS.map(e => e.ticker),   'msciGrid',    MSCI_ETFS, false),
+      loadSection(INDICES.map(i => i.ticker),      'indicesGrid', INDICES,                                  true),
+      loadSection(MAG7.map(s => s.ticker),          'mag7Grid',    MAG7.map(s => ({...s, display: s.ticker})), false),
+      loadSection(MSCI_ETFS.map(e => e.ticker),     'msciGrid',    MSCI_ETFS,                               false),
       loadVIX(),
       switchFXPair(activeFXPair),
     ]);
@@ -1269,42 +1256,76 @@ async function loadAll() {
 }
 
 // ============================================================
-// FETCHERS  (session-cache aware, progress-aware)
+// YAHOO FINANCE FETCHER
+// Single call returns both quote and 1Y daily history together.
+// Falls back to query2 if query1 fails.
 // ============================================================
-async function fetchQuote(ticker) {
-  const cKey = `fmp_quote_${ticker}`;
-  // 1. memory
-  if (mem[cKey]) return mem[cKey];
-  // 2. session storage
-  const cached = scFresh(cKey, CACHE_TTL.quote);
-  if (cached) { mem[cKey] = cached; progressTick(); return cached; }
-  // 3. network
-  try {
-    const r = await fetch(`https://financialmodelingprep.com/stable/quote?symbol=${ticker}&apikey=${apiKey}`);
-    const d = await r.json();
-    const result = (Array.isArray(d) && d[0]) ? d[0] : null;
-    if (result) { mem[cKey] = result; scWrite(cKey, result); }
-    progressTick();
-    return result;
-  } catch { progressTick(); return null; }
-}
-
-async function fetchHistory(ticker) {
-  const cKey = `fmp_hist_${ticker}`;
+async function fetchYahoo(ticker) {
+  const cKey = `yh_${ticker}`;
   if (mem[cKey]) return mem[cKey];
   const cached = scFresh(cKey, CACHE_TTL.hist);
   if (cached) { mem[cKey] = cached; progressTick(); return cached; }
-  try {
-    // OPT-3: request only 1 year of data to minimise payload
-    const r = await fetch(
-      `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${ticker}&limit=365&apikey=${apiKey}`
-    );
-    const d = await r.json();
-    const hist = (Array.isArray(d)) ? d : (d && d.historical) ? d.historical : [];
-    mem[cKey] = hist; scWrite(cKey, hist);
-    progressTick();
-    return hist;
-  } catch { progressTick(); return []; }
+
+  const encoded = encodeURIComponent(ticker);
+  const params  = `?interval=1d&range=1y&includePrePost=false`;
+
+  async function tryFetch(base) {
+    const r = await fetch(`${base}${encoded}${params}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  let json;
+  try       { json = await tryFetch(YH_PROXY);  }
+  catch (e) { json = await tryFetch(YH_PROXY2); }
+
+  const result = json?.chart?.result?.[0];
+  if (!result) throw new Error(`No data for ${ticker}`);
+
+  // Parse into a normalised object with quote + sorted history (newest first)
+  const meta      = result.meta;
+  const timestamps = result.timestamp || [];
+  const closes    = result.indicators?.quote?.[0]?.close || [];
+
+  // Build history array newest-first (matches FMP convention)
+  const history = timestamps
+    .map((ts, i) => ({
+      date:  new Date(ts * 1000).toISOString().slice(0, 10),
+      close: closes[i],
+    }))
+    .filter(p => p.close != null)
+    .reverse();
+
+  const latestClose   = meta.regularMarketPrice ?? history[0]?.close;
+  const prevClose     = meta.chartPreviousClose  ?? meta.previousClose ?? history[1]?.close;
+  const change        = latestClose - prevClose;
+  const changePct     = (change / prevClose) * 100;
+
+  const normalised = {
+    symbol:             ticker,
+    name:               meta.shortName || meta.longName || ticker,
+    price:              latestClose,
+    change:             change,
+    changesPercentage:  changePct,
+    history,
+  };
+
+  mem[cKey] = normalised;
+  scWrite(cKey, normalised);
+  progressTick();
+  return normalised;
+}
+
+// Convenience wrappers to match existing call sites
+async function fetchQuote(ticker)  {
+  const d = await fetchYahoo(ticker);
+  return d;
+}
+async function fetchHistory(ticker) {
+  const d = await fetchYahoo(ticker);
+  return d?.history || [];
 }
 
 // ============================================================
@@ -1416,11 +1437,10 @@ function formatPrice(p) {
 // VIX
 // ============================================================
 async function loadVIX() {
-  const [quote, hist] = await Promise.all([
-    fetchQuote('VIX'),
-    fetchHistory('VIX'),
-  ]);
-  if (quote) renderVIX(quote, getPerf(hist));
+  try {
+    const data = await fetchYahoo('^VIX');
+    if (data) renderVIX(data, getPerf(data.history));
+  } catch(e) {}
 }
 
 function renderVIX(quote, perf) {
@@ -1477,7 +1497,7 @@ async function showDrilldown(ticker, cfg) {
     `<div style="color:var(--text-muted);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:12px 0;">Loading…</div>`;
   document.getElementById('detractorsList').innerHTML = '';
 
-  const constituents = INDEX_CONSTITUENTS[ticker] || INDEX_CONSTITUENTS.SPY;
+  const constituents = INDEX_CONSTITUENTS[ticker] || INDEX_CONSTITUENTS['^GSPC'];
   const results = await Promise.allSettled(constituents.map(t => fetchQuote(t)));
   const data = results
     .filter(r => r.status === 'fulfilled' && r.value)
@@ -1543,19 +1563,44 @@ function populateRates() {
 // FX CHART
 // ============================================================
 async function loadFXData(pair) {
-  const cKey = `fmp_fx_${pair}`;
+  const cKey = `yh_fx_${pair}`;
   if (mem[cKey]) return mem[cKey];
   const cached = scFresh(cKey, CACHE_TTL.fx);
   if (cached) { mem[cKey] = cached; return cached; }
 
-  const symbol = FX_PAIRS[pair].fmpSymbol;
-  const r = await fetch(`https://financialmodelingprep.com/stable/historical-chart/1hour?symbol=${symbol}&apikey=${apiKey}`);
-  const d = await r.json();
-  if (!Array.isArray(d) || !d.length) throw new Error('No FX data');
+  const symbol = FX_PAIRS[pair].yhSymbol;
+  const encoded = encodeURIComponent(symbol);
+  const params  = `?interval=1h&range=7d&includePrePost=false`;
 
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
-  const filtered = d.filter(p => new Date(p.date) >= cutoff).reverse();
-  mem[cKey] = filtered; scWrite(cKey, filtered);
+  async function tryFetch(base) {
+    const r = await fetch(`${base}${encoded}${params}`, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  let json;
+  try       { json = await tryFetch(YH_PROXY);  }
+  catch (e) { json = await tryFetch(YH_PROXY2); }
+
+  const result = json?.chart?.result?.[0];
+  if (!result) throw new Error('No FX data');
+
+  const timestamps = result.timestamp || [];
+  const closes     = result.indicators?.quote?.[0]?.close || [];
+  const highs      = result.indicators?.quote?.[0]?.high  || [];
+  const lows       = result.indicators?.quote?.[0]?.low   || [];
+
+  const filtered = timestamps
+    .map((ts, i) => ({
+      date:  new Date(ts * 1000).toISOString().slice(0, 16).replace('T', ' '),
+      close: closes[i],
+      high:  highs[i],
+      low:   lows[i],
+    }))
+    .filter(p => p.close != null);
+
+  mem[cKey] = filtered;
+  scWrite(cKey, filtered);
   return filtered;
 }
 
@@ -1573,8 +1618,6 @@ async function switchFXPair(pair) {
 
   const canvas  = document.getElementById('fxCanvas');
   const loading = document.getElementById('fxLoading');
-
-  if (!apiKey) { loading.textContent = 'LOAD DATA TO VIEW CHART'; loading.style.display='flex'; canvas.style.display='none'; return; }
 
   loading.textContent = 'FETCHING FX DATA…';
   loading.style.display = 'flex'; canvas.style.display = 'none';
@@ -1723,39 +1766,30 @@ async function runDiagnostics() {
   panel.classList.add('visible');
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  // Reset all rows
   const tests = ['apikey','network','fmp','auth','quota','speed','cors'];
-  tests.forEach(t => {
-    setDiag(t, 'running', 'CHECKING…', '');
-  });
+  tests.forEach(t => setDiag(t, 'running', 'CHECKING…', ''));
   document.getElementById('diagSummary').className = 'diag-summary';
   document.getElementById('diagSummary').textContent = '';
 
-  const key = document.getElementById('apiKeyInput').value.trim();
+  // Rename labels for Yahoo Finance context
+  document.querySelector('#diag-apikey .diag-test-name').textContent  = '1. Data Source';
+  document.querySelector('#diag-fmp .diag-test-name').textContent     = '3. Yahoo Finance Reachable';
+  document.querySelector('#diag-auth .diag-test-name').textContent    = '4. Data Returned';
+  document.querySelector('#diag-quota .diag-test-name').textContent   = '5. Data Quality';
+  document.querySelector('#diag-cors .diag-test-name').textContent    = '7. CORS / Browser Block';
+
   const issues = [];
 
-  // TEST 1: API key present
-  if (!key) {
-    setDiag('apikey', 'fail', 'FAIL', 'No API key entered — paste your FMP key above');
-    issues.push('No API key entered.');
-    ['network','fmp','auth','quota','speed','cors'].forEach(t => setDiag(t, 'warn', 'SKIPPED', 'Cannot test without API key'));
-    showDiagSummary(issues);
-    return;
-  } else if (key.length < 20) {
-    setDiag('apikey', 'warn', 'WARN', `Key looks short (${key.length} chars) — double-check it's complete`);
-    issues.push('API key may be truncated.');
-  } else {
-    setDiag('apikey', 'pass', 'PASS', `Key present · ${key.length} characters`);
-  }
+  // TEST 1: Data source confirmation
+  setDiag('apikey', 'pass', 'PASS', 'Using Yahoo Finance — no API key required');
 
-  // TEST 2: Internet connectivity — try multiple endpoints, pass if any responds
+  // TEST 2: Internet connectivity
   const connectTargets = [
-    'https://financialmodelingprep.com',
+    'https://query1.finance.yahoo.com',
     'https://www.google.com',
     'https://www.cloudflare.com',
   ];
-  let connected = false;
-  let connMs = 0;
+  let connected = false, connMs = 0;
   for (const url of connectTargets) {
     try {
       const t0 = Date.now();
@@ -1764,102 +1798,67 @@ async function runDiagnostics() {
       connected = true;
       setDiag('network', 'pass', 'PASS', `Reachable via ${new URL(url).hostname} · ${connMs}ms`);
       break;
-    } catch(e) { /* try next */ }
+    } catch(e) {}
   }
   if (!connected) {
-    setDiag('network', 'fail', 'FAIL', 'Could not reach Google, Cloudflare, or FMP — check your internet connection');
-    issues.push('No internet connection detected across multiple endpoints.');
+    setDiag('network', 'fail', 'FAIL', 'Could not reach Yahoo Finance, Google, or Cloudflare');
+    issues.push('No internet connection detected. Check your Wi-Fi and try again.');
     ['fmp','auth','quota','speed','cors'].forEach(t => setDiag(t, 'warn', 'SKIPPED', 'No internet'));
-    showDiagSummary(issues);
-    return;
+    showDiagSummary(issues); return;
   }
 
-  // TEST 3 + 4 + 5 + 6 + 7: Hit FMP with a single lightweight quote call
+  // TEST 3 + 4 + 5 + 6 + 7: Hit Yahoo Finance
   let resp, json, elapsed;
   try {
     const t0 = Date.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     resp = await fetch(
-      `https://financialmodelingprep.com/stable/quote?symbol=AAPL&apikey=${key}`,
-      { signal: controller.signal }
+      'https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=5d',
+      { signal: controller.signal, headers: { 'Accept': 'application/json' } }
     );
     clearTimeout(timeout);
     elapsed = Date.now() - t0;
 
-    // TEST 3: FMP reachable
-    setDiag('fmp', 'pass', 'PASS', `FMP servers responded · HTTP ${resp.status}`);
-
-    // TEST 7: CORS — if we got here, no CORS block
+    setDiag('fmp', 'pass', 'PASS', `Yahoo Finance responded · HTTP ${resp.status}`);
     setDiag('cors', 'pass', 'PASS', 'No browser CORS block detected');
 
-    // TEST 6: Speed
-    if      (elapsed < 1500) setDiag('speed', 'pass', 'FAST',   `${elapsed}ms — excellent`);
-    else if (elapsed < 4000) setDiag('speed', 'warn', 'SLOW',   `${elapsed}ms — FMP free tier under load`);
-    else                     setDiag('speed', 'fail', 'TIMEOUT',`${elapsed}ms — FMP very slow, may time out on full load`);
-    if (elapsed >= 4000) issues.push(`FMP response slow (${elapsed}ms). Free tier may be throttled — try again in a few minutes.`);
+    if      (elapsed < 1500) setDiag('speed', 'pass', 'FAST',    `${elapsed}ms — excellent`);
+    else if (elapsed < 4000) setDiag('speed', 'warn', 'SLOW',    `${elapsed}ms — Yahoo may be under load`);
+    else                     setDiag('speed', 'fail', 'TIMEOUT', `${elapsed}ms — very slow, data may not load`);
+    if (elapsed >= 4000) issues.push(`Yahoo Finance responding slowly (${elapsed}ms). Try again in a moment.`);
 
-    // Parse response
     json = await resp.json();
+    const result = json?.chart?.result?.[0];
 
-    // TEST 4: Auth / key validity
-    if (resp.status === 401 || resp.status === 403) {
-      setDiag('auth', 'fail', 'FAIL', 'API key rejected — check it matches exactly what FMP provided');
-      issues.push('API key invalid or expired.');
-      setDiag('quota', 'warn', 'SKIPPED', 'Cannot check quota with invalid key');
-    } else if (typeof json === 'object' && json !== null && !Array.isArray(json) && json['Error Message']) {
-      setDiag('auth', 'fail', 'FAIL', json['Error Message']);
-      issues.push(`FMP error: ${json['Error Message']}`);
-      setDiag('quota', 'warn', 'SKIPPED', '—');
-    } else if (Array.isArray(json) && json.length > 0 && json[0].symbol) {
-      setDiag('auth', 'pass', 'PASS', `Key valid · AAPL price: $${json[0].price}`);
-
-      // TEST 5: Quota — check X-RateLimit headers if present
-      const remaining = resp.headers.get('X-RateLimit-Remaining');
-      const limit      = resp.headers.get('X-RateLimit-Limit');
-      if (remaining !== null) {
-        const pct = Math.round((remaining / limit) * 100);
-        if (remaining < 10) {
-          setDiag('quota', 'fail', 'LOW', `Only ${remaining}/${limit} requests left today — quota nearly exhausted`);
-          issues.push(`Daily quota almost exhausted (${remaining} requests left). Wait until midnight ET for reset.`);
-        } else {
-          setDiag('quota', 'pass', 'PASS', `${remaining}/${limit} requests remaining today (${pct}%)`);
-        }
-      } else {
-        // FMP free tier doesn't always expose headers — estimate from response
-        setDiag('quota', 'warn', 'UNKNOWN', 'FMP did not return quota headers — assume quota is OK if key worked');
-      }
-    } else if (Array.isArray(json) && json.length === 0) {
-      setDiag('auth', 'warn', 'WARN', 'Key accepted but returned empty data — quota may be exhausted');
-      issues.push('FMP returned empty data. Your daily quota (250 requests) may be exhausted. It resets at midnight ET.');
-      setDiag('quota', 'fail', 'EXHAUSTED', 'Quota likely exhausted — resets midnight ET');
+    if (result && result.meta?.regularMarketPrice) {
+      setDiag('auth',  'pass', 'PASS',    `Data returned · AAPL $${result.meta.regularMarketPrice}`);
+      setDiag('quota', 'pass', 'NO LIMIT', 'Yahoo Finance has no daily quota on the free endpoint');
+    } else if (json?.chart?.error) {
+      setDiag('auth',  'fail', 'FAIL', json.chart.error.description || 'Yahoo returned an error');
+      setDiag('quota', 'warn', 'UNKNOWN', '—');
+      issues.push(`Yahoo Finance error: ${json.chart.error.description}`);
     } else {
-      setDiag('auth', 'warn', 'WARN', 'Unexpected response format from FMP');
-      setDiag('quota', 'warn', 'UNKNOWN', JSON.stringify(json).slice(0, 80));
+      setDiag('auth',  'warn', 'WARN', 'Unexpected response — Yahoo may have changed their API');
+      setDiag('quota', 'warn', 'UNKNOWN', JSON.stringify(json).slice(0,80));
+      issues.push('Yahoo Finance returned unexpected data format. The dashboard may need updating.');
     }
 
   } catch(e) {
     if (e.name === 'AbortError') {
-      setDiag('fmp',   'fail', 'TIMEOUT', 'FMP did not respond within 15 seconds');
+      setDiag('fmp',   'fail', 'TIMEOUT', 'Yahoo Finance did not respond within 15 seconds');
       setDiag('speed', 'fail', 'TIMEOUT', '>15,000ms');
-      setDiag('auth',  'warn', 'SKIPPED', 'Could not reach FMP');
-      setDiag('quota', 'warn', 'SKIPPED', 'Could not reach FMP');
-      setDiag('cors',  'warn', 'UNKNOWN', 'Timeout before response — cannot confirm');
-      issues.push('FMP timed out. Their free tier servers may be overloaded. Try again in a few minutes.');
-    } else if (e.message && e.message.toLowerCase().includes('cors')) {
-      setDiag('fmp',   'warn', 'WARN',  'FMP reached but CORS issue detected');
-      setDiag('cors',  'fail', 'FAIL',  'Browser is blocking cross-origin requests — try opening the file via a local server or different browser');
       setDiag('auth',  'warn', 'SKIPPED', '—');
       setDiag('quota', 'warn', 'SKIPPED', '—');
-      setDiag('speed', 'warn', 'SKIPPED', '—');
-      issues.push('CORS block detected. If opening the HTML file directly (file://), try using Chrome or Edge instead of Safari/Firefox, or run a simple local server.');
+      setDiag('cors',  'warn', 'UNKNOWN', 'Timeout — cannot confirm');
+      issues.push('Yahoo Finance timed out. Try again in a moment.');
     } else {
-      setDiag('fmp',   'fail', 'FAIL', e.message || 'Unknown network error');
-      setDiag('cors',  'warn', 'UNKNOWN', '—');
+      setDiag('fmp',   'fail', 'FAIL', e.message || 'Network error');
+      setDiag('cors',  'fail', 'FAIL', 'Possible CORS block — try opening via http://localhost or a different browser');
       setDiag('auth',  'warn', 'SKIPPED', '—');
       setDiag('quota', 'warn', 'SKIPPED', '—');
       setDiag('speed', 'warn', 'SKIPPED', '—');
-      issues.push(`Network error: ${e.message}`);
+      issues.push('Network error reaching Yahoo Finance. If opening via file://, use the Python local server or GitHub Pages instead.');
     }
   }
 
@@ -1997,27 +1996,6 @@ function updateClock() {
 }
 setInterval(updateClock, 1000);
 updateClock();
-document.getElementById('apiKeyInput').addEventListener('keydown', e => { if(e.key==='Enter') initDashboard(); });
-
-// ============================================================
-// PERSIST API KEY IN SESSION STORAGE
-// Key is stored only in the browser, never in the file itself.
-// ============================================================
-(function restoreApiKey() {
-  const saved = sessionStorage.getItem('fmp_api_key');
-  if (saved) {
-    document.getElementById('apiKeyInput').value = saved;
-    document.getElementById('lastUpdated').textContent = 'Key restored — click REFRESH to reload data';
-  }
-})();
-
-// Save key to session storage whenever user loads data
-const _origInit = initDashboard;
-window.initDashboard = function() {
-  const key = document.getElementById('apiKeyInput').value.trim();
-  if (key) sessionStorage.setItem('fmp_api_key', key);
-  _origInit();
-};
 </script>
 </body>
 </html>
