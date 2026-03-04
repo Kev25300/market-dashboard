@@ -1280,7 +1280,7 @@ async function fetchQuote(ticker) {
   if (cached) { mem[cKey] = cached; progressTick(); return cached; }
   // 3. network
   try {
-    const r = await fetch(`https://financialmodelingprep.com/api/v3/quote/${ticker}?apikey=${apiKey}`);
+    const r = await fetch(`https://financialmodelingprep.com/stable/quote?symbol=${ticker}&apikey=${apiKey}`);
     const d = await r.json();
     const result = (Array.isArray(d) && d[0]) ? d[0] : null;
     if (result) { mem[cKey] = result; scWrite(cKey, result); }
@@ -1295,12 +1295,12 @@ async function fetchHistory(ticker) {
   const cached = scFresh(cKey, CACHE_TTL.hist);
   if (cached) { mem[cKey] = cached; progressTick(); return cached; }
   try {
-    // OPT-3: request only 1 year of data with timeseries param to minimise payload
+    // OPT-3: request only 1 year of data to minimise payload
     const r = await fetch(
-      `https://financialmodelingprep.com/api/v3/historical-price-full/${ticker}?serietype=line&timeseries=365&apikey=${apiKey}`
+      `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${ticker}&limit=365&apikey=${apiKey}`
     );
     const d = await r.json();
-    const hist = (d && d.historical) ? d.historical : [];
+    const hist = (Array.isArray(d)) ? d : (d && d.historical) ? d.historical : [];
     mem[cKey] = hist; scWrite(cKey, hist);
     progressTick();
     return hist;
@@ -1549,7 +1549,7 @@ async function loadFXData(pair) {
   if (cached) { mem[cKey] = cached; return cached; }
 
   const symbol = FX_PAIRS[pair].fmpSymbol;
-  const r = await fetch(`https://financialmodelingprep.com/api/v3/historical-chart/1hour/${symbol}?apikey=${apiKey}`);
+  const r = await fetch(`https://financialmodelingprep.com/stable/historical-chart/1hour?symbol=${symbol}&apikey=${apiKey}`);
   const d = await r.json();
   if (!Array.isArray(d) || !d.length) throw new Error('No FX data');
 
@@ -1781,7 +1781,7 @@ async function runDiagnostics() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     resp = await fetch(
-      `https://financialmodelingprep.com/api/v3/quote/AAPL?apikey=${key}`,
+      `https://financialmodelingprep.com/stable/quote?symbol=AAPL&apikey=${key}`,
       { signal: controller.signal }
     );
     clearTimeout(timeout);
