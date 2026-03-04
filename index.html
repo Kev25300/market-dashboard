@@ -1166,9 +1166,12 @@ const FX_PAIRS = {
   USDCAD: { label:'USD / CAD', yhSymbol:'USDCAD=X' },
 };
 
-// Yahoo Finance proxy — routes around CORS
-const YH_PROXY = 'https://query1.finance.yahoo.com/v8/finance/chart/';
-const YH_PROXY2 = 'https://query2.finance.yahoo.com/v8/finance/chart/';
+// Yahoo Finance via CORS proxies — tried in order until one works
+const YH_PROXIES = [
+  ticker => `https://corsproxy.io/?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`)}`,
+  ticker => `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`)}`,
+  ticker => `https://thingproxy.freeboard.io/fetch/https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`,
+];
 
 // ============================================================
 // STATE
@@ -1269,47 +1272,39 @@ async function fetchYahoo(ticker) {
   const encoded = encodeURIComponent(ticker);
   const params  = `?interval=1d&range=1y&includePrePost=false`;
 
-  async function tryFetch(base) {
-    const r = await fetch(`${base}${encoded}${params}`, {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
+  let json = null;
+  for (const proxyFn of YH_PROXIES) {
+    try {
+      const url = proxyFn(encoded) + (proxyFn(encoded).includes('?') ? '&' : '?') + `interval=1d&range=1y&includePrePost=false`;
+      const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) continue;
+      const text = await r.text();
+      json = JSON.parse(text);
+      if (json?.chart?.result?.[0]) break; // success
+      json = null;
+    } catch(e) { continue; }
   }
 
-  let json;
-  try       { json = await tryFetch(YH_PROXY);  }
-  catch (e) { json = await tryFetch(YH_PROXY2); }
+  if (!json) throw new Error(`No data for ${ticker}`);
 
-  const result = json?.chart?.result?.[0];
-  if (!result) throw new Error(`No data for ${ticker}`);
-
-  // Parse into a normalised object with quote + sorted history (newest first)
-  const meta      = result.meta;
+  const result = json.chart.result[0];
+  const meta       = result.meta;
   const timestamps = result.timestamp || [];
-  const closes    = result.indicators?.quote?.[0]?.close || [];
+  const closes     = result.indicators?.quote?.[0]?.close || [];
 
-  // Build history array newest-first (matches FMP convention)
   const history = timestamps
-    .map((ts, i) => ({
-      date:  new Date(ts * 1000).toISOString().slice(0, 10),
-      close: closes[i],
-    }))
+    .map((ts, i) => ({ date: new Date(ts * 1000).toISOString().slice(0, 10), close: closes[i] }))
     .filter(p => p.close != null)
     .reverse();
 
-  const latestClose   = meta.regularMarketPrice ?? history[0]?.close;
-  const prevClose     = meta.chartPreviousClose  ?? meta.previousClose ?? history[1]?.close;
-  const change        = latestClose - prevClose;
-  const changePct     = (change / prevClose) * 100;
+  const latestClose = meta.regularMarketPrice ?? history[0]?.close;
+  const prevClose   = meta.chartPreviousClose  ?? meta.previousClose ?? history[1]?.close;
+  const change      = latestClose - prevClose;
+  const changePct   = (change / prevClose) * 100;
 
   const normalised = {
-    symbol:             ticker,
-    name:               meta.shortName || meta.longName || ticker,
-    price:              latestClose,
-    change:             change,
-    changesPercentage:  changePct,
-    history,
+    symbol: ticker, name: meta.shortName || meta.longName || ticker,
+    price: latestClose, change, changesPercentage: changePct, history,
   };
 
   mem[cKey] = normalised;
@@ -1568,23 +1563,26 @@ async function loadFXData(pair) {
   const cached = scFresh(cKey, CACHE_TTL.fx);
   if (cached) { mem[cKey] = cached; return cached; }
 
-  const symbol = FX_PAIRS[pair].yhSymbol;
+  const symbol  = FX_PAIRS[pair].yhSymbol;
   const encoded = encodeURIComponent(symbol);
-  const params  = `?interval=1h&range=7d&includePrePost=false`;
+  const params  = `interval=1h&range=7d&includePrePost=false`;
 
-  async function tryFetch(base) {
-    const r = await fetch(`${base}${encoded}${params}`, { headers: { 'Accept': 'application/json' } });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
+  let json = null;
+  for (const proxyFn of YH_PROXIES) {
+    try {
+      const base = proxyFn(encoded);
+      const sep  = base.includes('?') ? '&' : '?';
+      const r    = await fetch(`${base}${sep}${params}`, { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) continue;
+      json = JSON.parse(await r.text());
+      if (json?.chart?.result?.[0]) break;
+      json = null;
+    } catch(e) { continue; }
   }
 
-  let json;
-  try       { json = await tryFetch(YH_PROXY);  }
-  catch (e) { json = await tryFetch(YH_PROXY2); }
+  if (!json) throw new Error('No FX data');
 
-  const result = json?.chart?.result?.[0];
-  if (!result) throw new Error('No FX data');
-
+  const result     = json.chart.result[0];
   const timestamps = result.timestamp || [];
   const closes     = result.indicators?.quote?.[0]?.close || [];
   const highs      = result.indicators?.quote?.[0]?.high  || [];
@@ -1593,9 +1591,7 @@ async function loadFXData(pair) {
   const filtered = timestamps
     .map((ts, i) => ({
       date:  new Date(ts * 1000).toISOString().slice(0, 16).replace('T', ' '),
-      close: closes[i],
-      high:  highs[i],
-      low:   lows[i],
+      close: closes[i], high: highs[i], low: lows[i],
     }))
     .filter(p => p.close != null);
 
@@ -1785,7 +1781,7 @@ async function runDiagnostics() {
 
   // TEST 2: Internet connectivity
   const connectTargets = [
-    'https://query1.finance.yahoo.com',
+    'https://corsproxy.io',
     'https://www.google.com',
     'https://www.cloudflare.com',
   ];
@@ -1813,10 +1809,8 @@ async function runDiagnostics() {
     const t0 = Date.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
-    resp = await fetch(
-      'https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=5d',
-      { signal: controller.signal, headers: { 'Accept': 'application/json' } }
-    );
+    const testUrl = YH_PROXIES[0](encodeURIComponent('AAPL')) + '&interval=1d&range=5d';
+    resp = await fetch(testUrl, { signal: controller.signal, headers: { 'Accept': 'application/json' } });
     clearTimeout(timeout);
     elapsed = Date.now() - t0;
 
