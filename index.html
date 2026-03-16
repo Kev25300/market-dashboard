@@ -647,65 +647,113 @@ const CUSTOM_COLORS = [
 // DATA FETCHING
 // ═══════════════════════════════════════════════════════════
 
+// ─── In-memory cache ──────────────────────────────────────
 const _cache = {};
+
+// ─── localStorage cache (20-min TTL) ─────────────────────
+const _LS_TTL = 20 * 60 * 1000;
+function _lsGet(key) {
+    try {
+        const raw = localStorage.getItem('yf_' + key);
+        if (!raw) return null;
+        const { ts, data } = JSON.parse(raw);
+        if (Date.now() - ts > _LS_TTL) { localStorage.removeItem('yf_' + key); return null; }
+        return data;
+    } catch { return null; }
+}
+function _lsSet(key, data) {
+    try { localStorage.setItem('yf_' + key, JSON.stringify({ ts: Date.now(), data })); }
+    catch { /* storage quota exceeded — skip */ }
+}
+
+// ─── Request queue (max 4 concurrent) ────────────────────
+// Prevents simultaneously hammering public CORS proxies with
+// 30+ requests, which causes rate-limiting and failures.
+let _activeReqs = 0;
+const _reqQueue  = [];
+const _MAX_CONCURRENT = 4;
+function _enqueue(fn) {
+    return new Promise((resolve, reject) => {
+        const run = () => {
+            _activeReqs++;
+            Promise.resolve().then(fn).then(resolve, reject).finally(() => {
+                _activeReqs--;
+                if (_reqQueue.length) _reqQueue.shift()();
+            });
+        };
+        _activeReqs < _MAX_CONCURRENT ? run() : _reqQueue.push(run);
+    });
+}
 
 async function fetchSymbol(symbol, { range = '1y', interval = '1d' } = {}) {
     const cacheKey = `${symbol}__${range}__${interval}`;
+
+    // 1. In-memory cache (instant)
     if (_cache[cacheKey]) return _cache[cacheKey];
 
-    const enc = encodeURIComponent(symbol);
-    const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=${interval}&range=${range}&includePrePost=false`;
+    // 2. localStorage cache (survives page refresh, 20-min TTL)
+    const lsCached = _lsGet(cacheKey);
+    if (lsCached) { _cache[cacheKey] = lsCached; return lsCached; }
 
-    const isLocal   = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-    const localProxy = `/yf-proxy?url=${encodeURIComponent(yfUrl)}`;
+    // 3. Queue the network fetch so we never run more than 4 at once
+    return _enqueue(async () => {
+        const enc        = encodeURIComponent(symbol);
+        const yfUrl      = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=${interval}&range=${range}&includePrePost=false`;
+        const isLocal    = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        const localProxy = `/yf-proxy?url=${encodeURIComponent(yfUrl)}`;
 
-    const proxies = [
-        ...(isLocal ? [localProxy] : []),       // local server proxy — most reliable
-        `https://corsproxy.io/?${encodeURIComponent(yfUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(yfUrl)}`,
-        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yfUrl)}`,
-    ];
-    // file:// origins are always blocked by Yahoo's CORS policy — go straight to proxies
-    const urls = (isLocal || location.protocol === 'file:') ? proxies : [yfUrl, ...proxies];
+        const proxies = [
+            ...(isLocal ? [localProxy] : []),
+            `https://corsproxy.io/?${encodeURIComponent(yfUrl)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(yfUrl)}`,
+            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yfUrl)}`,
+            `https://thingproxy.freeboard.io/fetch/${yfUrl}`,
+        ];
+        // On localhost use proxies list (local proxy first).
+        // Elsewhere try direct Yahoo first (fast when CORS is allowed),
+        // then fall back to public proxies on CORS failure.
+        const urls = (isLocal || location.protocol === 'file:') ? proxies : [yfUrl, ...proxies];
 
-    for (const url of urls) {
-        try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 12000);
-            const res = await fetch(url, { signal: controller.signal });
-            clearTimeout(timer);
+        for (const url of urls) {
+            try {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 8000);
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timer);
 
-            if (!res.ok) continue;
+                if (!res.ok) continue;
 
-            const json = await res.json();
-            const result = json?.chart?.result?.[0];
-            if (!result) continue;
+                const json   = await res.json();
+                const result = json?.chart?.result?.[0];
+                if (!result) continue;
 
-            const ts       = result.timestamp || [];
-            const rawClose = result.indicators?.quote?.[0]?.close  || [];
-            const rawVol   = result.indicators?.quote?.[0]?.volume || [];
-            const adjClose = result.indicators?.adjclose?.[0]?.adjclose || rawClose;
+                const ts       = result.timestamp || [];
+                const rawClose = result.indicators?.quote?.[0]?.close  || [];
+                const rawVol   = result.indicators?.quote?.[0]?.volume || [];
+                const adjClose = result.indicators?.adjclose?.[0]?.adjclose || rawClose;
 
-            const history = [];
-            for (let i = 0; i < ts.length; i++) {
-                const p = adjClose[i] ?? rawClose[i];
-                if (p !== null && p !== undefined && !isNaN(p)) {
-                    history.push({ ts: ts[i], price: p, vol: rawVol[i] ?? null });
+                const history = [];
+                for (let i = 0; i < ts.length; i++) {
+                    const p = adjClose[i] ?? rawClose[i];
+                    if (p !== null && p !== undefined && !isNaN(p)) {
+                        history.push({ ts: ts[i], price: p, vol: rawVol[i] ?? null });
+                    }
                 }
-            }
-            if (history.length === 0) continue;
+                if (history.length === 0) continue;
 
-            const data = {
-                symbol,
-                history,
-                currentPrice: result.meta?.regularMarketPrice ?? history[history.length - 1].price,
-            };
-            _cache[cacheKey] = data;
-            return data;
+                const data = {
+                    symbol,
+                    history,
+                    currentPrice: result.meta?.regularMarketPrice ?? history[history.length - 1].price,
+                };
+                _cache[cacheKey] = data;
+                _lsSet(cacheKey, data);
+                return data;
 
-        } catch (_) { /* try next */ }
-    }
-    return null;
+            } catch (_) { /* try next proxy */ }
+        }
+        return null;
+    });
 }
 
 
