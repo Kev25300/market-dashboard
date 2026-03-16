@@ -666,12 +666,10 @@ function _lsSet(key, data) {
     catch { /* storage quota exceeded — skip */ }
 }
 
-// ─── Request queue (max 4 concurrent) ────────────────────
-// Prevents simultaneously hammering public CORS proxies with
-// 30+ requests, which causes rate-limiting and failures.
+// ─── Request queue (max 5 concurrent symbols) ────────────
 let _activeReqs = 0;
 const _reqQueue  = [];
-const _MAX_CONCURRENT = 4;
+const _MAX_CONCURRENT = 5;
 function _enqueue(fn) {
     return new Promise((resolve, reject) => {
         const run = () => {
@@ -685,6 +683,51 @@ function _enqueue(fn) {
     });
 }
 
+// ─── Race all proxies in parallel for one Yahoo Finance URL ──
+// Returns the parsed chart result object, or null if all fail.
+// Using Promise.any so whichever proxy responds first wins —
+// dramatically faster and more reliable than trying sequentially.
+async function _raceProxies(yfUrl, isLocal) {
+    const enc = encodeURIComponent(yfUrl);
+    const proxies = [
+        ...(isLocal ? [`/yf-proxy?url=${enc}`] : []),
+        `https://corsproxy.io/?${enc}`,
+        `https://api.allorigins.win/raw?url=${enc}`,
+        `https://api.codetabs.com/v1/proxy?quest=${enc}`,
+        `https://thingproxy.freeboard.io/fetch/${yfUrl}`,
+        `https://cors-proxy.htmldriven.com/?url=${enc}`,
+    ];
+    const urls = (isLocal || location.protocol === 'file:') ? proxies : [yfUrl, ...proxies];
+
+    // One AbortController per URL so we can cancel losers once a winner is found
+    const controllers = urls.map(() => new AbortController());
+
+    const tryUrl = async (url, i) => {
+        const timer = setTimeout(() => controllers[i].abort(), 9000);
+        try {
+            const res = await fetch(url, { signal: controllers[i].signal });
+            clearTimeout(timer);
+            if (!res.ok) throw new Error('http ' + res.status);
+            const json = await res.json();
+            const result = json?.chart?.result?.[0];
+            if (!result) throw new Error('no data');
+            return result;
+        } catch (e) {
+            clearTimeout(timer);
+            throw e;
+        }
+    };
+
+    try {
+        const winner = await Promise.any(urls.map((url, i) => tryUrl(url, i)));
+        // Cancel any still-pending requests
+        controllers.forEach(c => { try { c.abort(); } catch (_) {} });
+        return winner;
+    } catch {
+        return null; // All proxies failed
+    }
+}
+
 async function fetchSymbol(symbol, { range = '1y', interval = '1d' } = {}) {
     const cacheKey = `${symbol}__${range}__${interval}`;
 
@@ -695,64 +738,42 @@ async function fetchSymbol(symbol, { range = '1y', interval = '1d' } = {}) {
     const lsCached = _lsGet(cacheKey);
     if (lsCached) { _cache[cacheKey] = lsCached; return lsCached; }
 
-    // 3. Queue the network fetch so we never run more than 4 at once
+    // 3. Queue so we run at most 5 symbols concurrently
     return _enqueue(async () => {
-        const enc        = encodeURIComponent(symbol);
-        const yfUrl      = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=${interval}&range=${range}&includePrePost=false`;
-        const isLocal    = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-        const localProxy = `/yf-proxy?url=${encodeURIComponent(yfUrl)}`;
+        const enc     = encodeURIComponent(symbol);
+        const yfUrl   = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=${interval}&range=${range}&includePrePost=false`;
+        const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
-        const proxies = [
-            ...(isLocal ? [localProxy] : []),
-            `https://corsproxy.io/?${encodeURIComponent(yfUrl)}`,
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(yfUrl)}`,
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yfUrl)}`,
-            `https://thingproxy.freeboard.io/fetch/${yfUrl}`,
-        ];
-        // On localhost use proxies list (local proxy first).
-        // Elsewhere try direct Yahoo first (fast when CORS is allowed),
-        // then fall back to public proxies on CORS failure.
-        const urls = (isLocal || location.protocol === 'file:') ? proxies : [yfUrl, ...proxies];
-
-        for (const url of urls) {
-            try {
-                const controller = new AbortController();
-                const timer = setTimeout(() => controller.abort(), 8000);
-                const res = await fetch(url, { signal: controller.signal });
-                clearTimeout(timer);
-
-                if (!res.ok) continue;
-
-                const json   = await res.json();
-                const result = json?.chart?.result?.[0];
-                if (!result) continue;
-
-                const ts       = result.timestamp || [];
-                const rawClose = result.indicators?.quote?.[0]?.close  || [];
-                const rawVol   = result.indicators?.quote?.[0]?.volume || [];
-                const adjClose = result.indicators?.adjclose?.[0]?.adjclose || rawClose;
-
-                const history = [];
-                for (let i = 0; i < ts.length; i++) {
-                    const p = adjClose[i] ?? rawClose[i];
-                    if (p !== null && p !== undefined && !isNaN(p)) {
-                        history.push({ ts: ts[i], price: p, vol: rawVol[i] ?? null });
-                    }
-                }
-                if (history.length === 0) continue;
-
-                const data = {
-                    symbol,
-                    history,
-                    currentPrice: result.meta?.regularMarketPrice ?? history[history.length - 1].price,
-                };
-                _cache[cacheKey] = data;
-                _lsSet(cacheKey, data);
-                return data;
-
-            } catch (_) { /* try next proxy */ }
+        // Up to 3 attempts (with a short back-off) before giving up
+        let result = null;
+        for (let attempt = 0; attempt < 3 && !result; attempt++) {
+            if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
+            result = await _raceProxies(yfUrl, isLocal);
         }
-        return null;
+        if (!result) return null;
+
+        const ts       = result.timestamp || [];
+        const rawClose = result.indicators?.quote?.[0]?.close  || [];
+        const rawVol   = result.indicators?.quote?.[0]?.volume || [];
+        const adjClose = result.indicators?.adjclose?.[0]?.adjclose || rawClose;
+
+        const history = [];
+        for (let i = 0; i < ts.length; i++) {
+            const p = adjClose[i] ?? rawClose[i];
+            if (p !== null && p !== undefined && !isNaN(p)) {
+                history.push({ ts: ts[i], price: p, vol: rawVol[i] ?? null });
+            }
+        }
+        if (history.length === 0) return null;
+
+        const data = {
+            symbol,
+            history,
+            currentPrice: result.meta?.regularMarketPrice ?? history[history.length - 1].price,
+        };
+        _cache[cacheKey] = data;
+        _lsSet(cacheKey, data);
+        return data;
     });
 }
 
