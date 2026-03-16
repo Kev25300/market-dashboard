@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market Intelligence Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+:root {
+    --bg:      #0d1117;
+    --bg2:     #161b22;
+    --bg3:     #21262d;
+    --border:  #30363d;
+    --text:    #e6edf3;
+    --text2:   #8b949e;
+    --text3:   #6e7681;
+    --pos:     #3fb950;
+    --neg:     #f85149;
+    --accent:  #58a6ff;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+/* ── Header ── */
+.hdr {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+}
+.hdr-left { display: flex; align-items: center; gap: 12px; }
+.brand {
+    width: 34px; height: 34px;
+    background: linear-gradient(135deg, #58a6ff 0%, #bc8cff 100%);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: #fff; letter-spacing: -0.5px;
+    flex-shrink: 0;
+}
+.hdr-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.hdr-sub   { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.hdr-right { display: flex; align-items: center; gap: 20px; }
+.live-wrap { display: flex; align-items: center; gap: 6px; }
+.live-dot  { width: 7px; height: 7px; border-radius: 50%; background: var(--pos); flex-shrink: 0; }
+.live-dot.loading { background: #d29922; animation: blink 1s step-end infinite; }
+.live-dot.live    { background: var(--pos); animation: none; }
+.live-dot.error   { background: var(--neg); animation: none; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+.live-lbl  { font-size: 11px; color: var(--text2); }
+.ts        { font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums; }
+
+/* ── Layout ── */
+.main { max-width: 1640px; margin: 0 auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+
+/* ── Alert ── */
+.alert {
+    background: rgba(248,81,73,.08); border: 1px solid rgba(248,81,73,.3);
+    border-radius: 8px; padding: 12px 16px; color: #ffa198;
+    font-size: 12px; line-height: 1.7; display: none;
+}
+.alert.show { display: block; }
+.alert code {
+    background: rgba(255,255,255,.1); padding: 1px 5px; border-radius: 3px;
+    font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px;
+}
+
+/* ── Card ── */
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.card-hdr {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+}
+.card-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.card-desc  { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.badge {
+    font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 20px;
+    border: 1px solid var(--border); color: var(--text3);
+    text-transform: uppercase; letter-spacing: .06em; white-space: nowrap;
+}
+
+/* ── Data Source Footer ── */
+.data-src {
+    padding: 8px 20px; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 6px;
+    font-size: 10px; font-style: italic; color: var(--text3);
+    background: rgba(255,255,255,.015);
+}
+.data-src b { font-style: normal; font-weight: 500; color: var(--text3); }
+.data-src-multi { padding: 10px 20px; border-top: 1px solid var(--border); background: rgba(255,255,255,.015); }
+.data-src-multi p { font-size: 10px; font-style: italic; color: var(--text3); line-height: 1.8; }
+
+/* ── Period selector ── */
+.period-bar { display: flex; gap: 2px; background: var(--bg3); border-radius: 6px; padding: 3px; border: 1px solid var(--border); }
+.period-btn {
+    padding: 3px 9px; border-radius: 4px; border: 1px solid transparent;
+    background: transparent; color: var(--text3); cursor: pointer;
+    font-size: 11px; font-weight: 500; font-family: inherit;
+    transition: background .15s, color .15s, border-color .15s; white-space: nowrap;
+}
+.period-btn:hover:not(:disabled) { color: var(--text2); }
+.period-btn.active { background: var(--bg2); color: var(--accent); border-color: var(--border); }
+.period-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Chart toggles ── */
+.toggles { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+.toggle-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+    border-radius: 6px; border: 1px solid var(--border); background: transparent;
+    color: var(--text3); cursor: pointer; font-size: 11px; font-family: inherit;
+    transition: border-color .15s, color .15s, background .15s; white-space: nowrap;
+}
+.toggle-btn.on { background: rgba(255,255,255,.04); }
+.swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.chart-wrap { padding: 16px 20px 20px; height: 400px; position: relative; transition: opacity .2s; }
+.chart-wrap.loading { opacity: 0.4; pointer-events: none; }
+
+/* ── Tables ── */
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+    padding: 9px 16px; text-align: right;
+    font-size: 10px; font-weight: 600; color: var(--text3);
+    text-transform: uppercase; letter-spacing: .08em;
+    background: var(--bg3); border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+thead th:first-child,
+thead th:nth-child(2) { text-align: left; }
+tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: rgba(255,255,255,.025); }
+tbody td { padding: 10px 16px; text-align: right; vertical-align: middle; white-space: nowrap; color: var(--text); }
+tbody td:first-child { text-align: left; }
+.tcol { display: flex; flex-direction: column; }
+.tsym { font-weight: 600; font-size: 13px; color: var(--text); }
+.tname { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.tetf-name { font-size: 10px; font-style: italic; color: var(--text3); margin-top: 2px; }
+.benchmark-row td { background: rgba(88,166,255,.035); }
+.benchmark-row td:first-child { border-left: 2px solid var(--accent); }
+.benchmark-badge {
+    display: inline-block; font-size: 9px; font-weight: 600; padding: 1px 5px;
+    border-radius: 3px; background: rgba(88,166,255,.15); color: var(--accent);
+    text-transform: uppercase; letter-spacing: .05em; margin-left: 5px; vertical-align: middle;
+}
+.flow-val { font-variant-numeric: tabular-nums; color: var(--text2); }
+.flows-note {
+    padding: 8px 20px; font-size: 10px; font-style: italic; color: var(--text3);
+    border-top: 1px solid var(--border); background: rgba(255,255,255,.01);
+}
+.price { font-variant-numeric: tabular-nums; font-size: 12px; }
+.pos { color: var(--pos); }
+.neg { color: var(--neg); }
+.muted { color: var(--text3); }
+.pill {
+    display: inline-block; padding: 2px 7px; border-radius: 4px;
+    font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.pill.pos   { background: rgba(63,185,80,.12);  color: var(--pos);   }
+.pill.neg   { background: rgba(248,81,73,.12);   color: var(--neg);   }
+.pill.muted { background: rgba(110,118,129,.1);  color: var(--text3); }
+.loading-row td { text-align: center !important; padding: 32px !important; color: var(--text3) !important; }
+.spinner {
+    display: inline-block; width: 13px; height: 13px;
+    border: 1.5px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .65s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Rates ── */
+.rates-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; padding: 20px; }
+.rate-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+.rate-bank { font-size: 11px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+.rate-country { font-size: 17px; font-weight: 600; color: var(--text); }
+.rate-big { font-size: 40px; font-weight: 700; line-height: 1; color: var(--accent); margin: 12px 0 6px; font-variant-numeric: tabular-nums; }
+.rate-name { font-size: 11px; color: var(--text3); }
+.rate-divider { height: 1px; background: var(--border); margin: 12px 0; }
+.rate-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text3); margin-bottom: 5px; }
+.rate-val { color: var(--text2); }
+.rate-cpi-val { color: var(--text); font-weight: 500; }
+.rate-cpi-src { font-size: 9px; color: var(--text3); margin-left: 4px; }
+.rate-trend {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 4px; margin-top: 8px;
+}
+.rate-trend.cutting { background: rgba(63,185,80,.12); color: var(--pos); }
+.rate-trend.hiking  { background: rgba(248,81,73,.12);  color: var(--neg); }
+.rate-trend.holding { background: rgba(110,118,129,.1); color: var(--text2); }
+.rate-note { font-size: 10px; color: var(--text3); margin-top: 8px; padding: 6px 8px; background: rgba(255,255,255,.03); border-radius: 4px; border-left: 2px solid var(--border); }
+
+/* ── Chart search ── */
+.chart-search {
+    padding: 9px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; position: relative;
+}
+.chart-search-input {
+    flex: 1; max-width: 300px;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 10px; color: var(--text); font-size: 12px; font-family: inherit;
+    outline: none; transition: border-color .15s;
+}
+.chart-search-input:focus { border-color: var(--accent); }
+.chart-search-input::placeholder { color: var(--text3); }
+.chart-search-btn {
+    padding: 5px 13px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg3); color: var(--text2); cursor: pointer;
+    font-size: 11px; font-family: inherit; transition: background .15s, color .15s; white-space: nowrap;
+}
+.chart-search-btn:hover:not(:disabled) { background: rgba(255,255,255,.06); color: var(--text); }
+.chart-search-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.search-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 20px; width: 360px;
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    z-index: 200; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.search-item {
+    padding: 9px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--border); transition: background .1s;
+}
+.search-item:last-child { border-bottom: none; }
+.search-item:hover { background: rgba(255,255,255,.04); }
+.search-sym  { font-weight: 600; font-size: 12px; color: var(--accent); min-width: 56px; }
+.search-name { font-size: 11px; color: var(--text2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-exch { font-size: 10px; color: var(--text3); white-space: nowrap; }
+.search-msg  { padding: 10px 14px; font-size: 11px; color: var(--text3); }
+.custom-toggle-wrap { display: inline-flex; align-items: center; gap: 2px; }
+.custom-remove-btn {
+    padding: 2px 6px; border-radius: 4px; border: 1px solid; background: transparent;
+    cursor: pointer; font-size: 12px; line-height: 1; opacity: 0.7; transition: opacity .15s;
+}
+.custom-remove-btn:hover { opacity: 1; }
+
+/* ── Sortable headers ── */
+thead th.sortable { cursor: pointer; user-select: none; }
+thead th.sortable:hover { color: var(--text2); }
+
+/* ── Sticky first column (all sizes — helps mobile scroll) ── */
+thead th:first-child {
+    position: sticky; left: 0; z-index: 2;
+    background: var(--bg3);
+}
+tbody td:first-child {
+    position: sticky; left: 0; z-index: 1;
+    background: var(--bg2);
+}
+tbody tr:hover td:first-child       { background: #1e252e; }
+.benchmark-row td:first-child        { background: #19202b; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+    .rates-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+    .main         { padding: 12px; gap: 12px; }
+    .hdr          { padding: 10px 16px; flex-wrap: wrap; gap: 6px; }
+    .hdr-right    { gap: 12px; }
+    .ts           { display: none; }
+
+    .card-hdr     { padding: 12px 16px; }
+    .card-title   { font-size: 13px; }
+    .card-desc    { font-size: 10px; }
+
+    .chart-wrap   { height: 280px; padding: 10px 12px 14px; }
+    .toggles      { padding: 10px 12px; gap: 4px; }
+    .toggle-btn   { font-size: 10px; padding: 3px 8px; gap: 4px; }
+
+    .chart-search         { padding: 8px 12px; }
+    .chart-search-input   { max-width: none; }
+    .search-dropdown      { left: 12px; right: 12px; width: auto; }
+
+    thead th      { padding: 8px 10px; }
+    tbody td      { padding: 8px 10px; font-size: 12px; }
+
+    .rates-grid   { padding: 12px; gap: 12px; }
+    .data-src     { padding: 6px 12px; }
+    .data-src-multi { padding: 8px 12px; }
+    .flows-note   { padding: 6px 12px; }
+}
+
+@media (max-width: 480px) {
+    .hdr-sub      { display: none; }
+    .hdr-title    { font-size: 13px; }
+
+    .period-bar   { overflow-x: auto; max-width: 100%; }
+    .period-btn   { padding: 4px 7px; font-size: 10px; }
+
+    .chart-wrap   { height: 220px; }
+
+    thead th      { padding: 6px 8px; font-size: 9px; }
+    tbody td      { padding: 7px 8px; font-size: 11px; }
+
+    .pill         { padding: 1px 5px; font-size: 10px; }
+    .rate-big     { font-size: 32px; }
+    .rate-country { font-size: 15px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════ HEADER ════════════════════════════════ -->
+<header class="hdr">
+    <div class="hdr-left">
+        <div class="brand">MI</div>
+        <div>
+            <div class="hdr-title">Market Intelligence Dashboard</div>
+            <div class="hdr-sub">Global Markets &middot; Asset Performance &middot; Policy Rates</div>
+        </div>
+    </div>
+    <div class="hdr-right">
+        <div class="live-wrap">
+            <div class="live-dot loading" id="liveDot"></div>
+            <span class="live-lbl" id="liveLbl">Connecting...</span>
+        </div>
+        <div class="ts" id="ts">—</div>
+    </div>
+</header>
+
+<main class="main">
+
+<!-- ── Error Banner ── -->
+<div class="alert" id="alertBanner">
+    <strong>Market data unavailable.</strong> All data sources failed to respond — Yahoo Finance and backup proxies could not be reached.<br>
+    Check your internet connection. If the problem persists, Yahoo Finance may be temporarily rate-limiting requests in your region.
+</div>
+
+<!-- ════════════════════════════ INDEX CHART ══════════════════════════════ -->
+<div class="card">
+    <div class="card-hdr">
+        <div>
+            <div class="card-title" id="chartTitle">Major Market Indices &mdash; 1 Year Performance</div>
+            <div class="card-desc">% change from period start &middot; Hover for real price &middot; Toggle series below &middot; Source: Yahoo Finance</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="period-bar" id="periodBar"></div>
+            <span class="badge" id="chartBadge">1Y Daily</span>
+        </div>
+    </div>
+    <div class="toggles" id="indexToggles">
+        <span style="color:var(--text3);font-size:11px;align-self:center">
+            <span class="spinner"></span>Loading indices&hellip;
+        </span>
+    </div>
+    <div class="chart-search" id="chartSearch">
+        <input type="text" class="chart-search-input" id="chartSearchInput"
+               placeholder="Add ticker, company or ISIN to chart&hellip;" autocomplete="off" spellcheck="false">
+        <button class="chart-search-btn" id="chartSearchBtn">Add to chart</button>
+        <div class="search-dropdown" id="searchDropdown" style="display:none;"></div>
+    </div>
+    <div class="chart-wrap">
+        <canvas id="indexChart"></canvas>
+    </div>
+    <div class="data-src">
+        <span><b>Source:</b> Yahoo Finance &middot; Historical daily closing prices via Yahoo Finance Chart API (v8)</span>
+        <span id="chartSrcTs">—</span>
+    </div>
+</div>
+
+<!-- ════════════════════════ MAGNIFICENT SEVEN ════════════════════════════ -->
+<div class="card">
+    <div class="card-hdr">
+        <div>
+            <div class="card-title">Magnificent Seven &mdash; Price Performance</div>
+            <div class="card-desc">Calendar period total returns &middot; Prices in USD</div>
+        </div>
+        <span class="badge">Equities</span>
+    </div>
+    <div class="tbl-wrap">
+        <table>
+            <thead id="mag7Head"></thead>
+            <tbody id="mag7Body">
+                <tr class="loading-row"><td colspan="9"><span class="spinner"></span>Loading Magnificent Seven&hellip;</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="data-src">
+        <span><b>Source:</b> Yahoo Finance &middot; Adjusted closing prices via Yahoo Finance Chart API (v8) &middot; Returns calculated from end-of-day close prices</span>
+        <span id="mag7SrcTs">—</span>
+    </div>
+</div>
+
+<!-- ══════════════════════ MSCI SECTOR INDICES ════════════════════════════ -->
+<div class="card">
+    <div class="card-hdr">
+        <div>
+            <div class="card-title">MSCI Global Sector Indices &mdash; iShares ETF Proxies</div>
+            <div class="card-desc" id="sectorDesc">GICS sector performance proxied via iShares global ETFs &middot; Prices in USD &middot; MSCI ACWI shown as benchmark</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="period-bar" id="sectorViewBar"></div>
+            <span class="badge">Sector ETFs</span>
+        </div>
+    </div>
+    <div class="tbl-wrap">
+        <table>
+            <thead id="sectorHead">
+                <tr>
+                    <th>Sector</th>
+                    <th>ETF</th>
+                    <th>Price (USD)</th>
+                    <th>YTD</th>
+                    <th>1D</th>
+                    <th>1W</th>
+                    <th>1M</th>
+                    <th>3M</th>
+                    <th>6M</th>
+                    <th>1Y</th>
+                </tr>
+            </thead>
+            <tbody id="sectorBody">
+                <tr class="loading-row"><td colspan="10"><span class="spinner"></span>Loading sector data&hellip;</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div id="sectorFlowsNote" class="flows-note" style="display:none;">
+        ⓘ <b>Rel. Volume</b> = avg daily dollar trading volume for the period ÷ 1Y average daily dollar volume.
+        1.0× = at baseline &middot; values &ge;1.5× suggest elevated repositioning activity &middot; &lt;0.5× is unusually quiet.
+        This is a directional-neutral activity signal — it does not indicate whether money is flowing in or out.
+        True net ETF creation/redemption flows require a specialised data provider (e.g. Bloomberg, ETF.com).
+        Computed from price &times; volume data sourced from Yahoo Finance Chart API (v8).
+    </div>
+    <div class="data-src">
+        <span><b>Source:</b> Yahoo Finance &middot; iShares ETFs used as proxies for MSCI GICS global sector indices &middot; Adjusted closing prices via Yahoo Finance Chart API (v8)</span>
+        <span id="sectorSrcTs">—</span>
+    </div>
+</div>
+
+<!-- ═══════════════════════ MSCI REGIONAL INDICES ════════════════════════════ -->
+<div class="card">
+    <div class="card-hdr">
+        <div>
+            <div class="card-title">MSCI Regional Indices &mdash; iShares ETF Proxies</div>
+            <div class="card-desc" id="regionDesc">Regional equity performance proxied via iShares ETFs &middot; Prices in USD &middot; MSCI ACWI shown as benchmark</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="period-bar" id="regionViewBar"></div>
+            <span class="badge">Regional ETFs</span>
+        </div>
+    </div>
+    <div class="tbl-wrap">
+        <table>
+            <thead id="regionHead">
+                <tr>
+                    <th>Region</th>
+                    <th>ETF</th>
+                    <th>Price (USD)</th>
+                    <th>YTD</th>
+                    <th>1D</th>
+                    <th>1W</th>
+                    <th>1M</th>
+                    <th>3M</th>
+                    <th>6M</th>
+                    <th>1Y</th>
+                </tr>
+            </thead>
+            <tbody id="regionBody">
+                <tr class="loading-row"><td colspan="10"><span class="spinner"></span>Loading regional data&hellip;</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div id="regionRelvolNote" class="flows-note" style="display:none;">
+        ⓘ <b>Rel. Volume</b> = avg daily dollar trading volume for the period ÷ 1Y average daily dollar volume.
+        1.0&times; = at baseline &middot; values &ge;1.5&times; suggest elevated repositioning activity &middot; &lt;0.5&times; is unusually quiet.
+        This is a directional-neutral activity signal — it does not indicate whether money is flowing in or out.
+        Computed from price &times; volume data sourced from Yahoo Finance Chart API (v8).
+    </div>
+    <div class="data-src">
+        <span><b>Source:</b> Yahoo Finance &middot; iShares ETFs used as proxies for MSCI regional indices &middot; Adjusted closing prices via Yahoo Finance Chart API (v8)</span>
+        <span id="regionSrcTs">—</span>
+    </div>
+</div>
+
+<!-- ════════════════════════ CENTRAL BANK RATES ════════════════════════════ -->
+<div class="card">
+    <div class="card-hdr">
+        <div>
+            <div class="card-title">Central Bank Policy Rates &amp; Inflation</div>
+            <div class="card-desc">Official policy rates and latest CPI readings &middot; Static data &mdash; verify before client use</div>
+        </div>
+        <span class="badge">Policy</span>
+    </div>
+    <div class="rates-grid" id="ratesGrid"></div>
+    <div class="data-src-multi">
+        <p>
+            <b>Policy rates &mdash; Sources:</b>
+            US Federal Reserve: <i>federalreserve.gov</i> &middot;
+            Bank of Canada: <i>bankofcanada.ca</i> &middot;
+            Bank of England: <i>bankofengland.co.uk</i>
+        </p>
+        <p>
+            <b>CPI &mdash; Sources:</b>
+            US Bureau of Labor Statistics: <i>bls.gov</i> &middot;
+            Statistics Canada: <i>statcan.gc.ca</i> &middot;
+            UK Office for National Statistics: <i>ons.gov.uk</i>
+        </p>
+        <p style="margin-top:4px;color:#4a5568">
+            All figures are hardcoded and must be manually updated following each central bank decision and monthly CPI release. Verify all data against official publications before use in client communications.
+            Data is manually added, verify at trading economics or government central bank website.
+        </p>
+    </div>
+</div>
+
+</main>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════
+
+const INDICES = [
+    { symbol: '^GSPC',    label: 'S&P 500',          color: '#58a6ff', on: true,  unit: 'pts'  },
+    { symbol: '^IXIC',    label: 'Nasdaq Composite',  color: '#bc8cff', on: true,  unit: 'pts'  },
+    { symbol: '^DJI',     label: 'Dow Jones',         color: '#56d364', on: false, unit: 'pts'  },
+    { symbol: '^RUT',     label: 'Russell 2000',      color: '#3fb950', on: false, unit: 'pts'  },
+    { symbol: '^GSPTSE',  label: 'TSX Composite',     color: '#e3b341', on: false, unit: 'pts'  },
+    { symbol: '^FTSE',    label: 'FTSE 100',          color: '#f85149', on: false, unit: 'pts'  },
+    { symbol: 'GC=F',     label: 'Gold',              color: '#ffd700', on: false, unit: 'USD'  },
+    { symbol: 'CL=F',     label: 'WTI Crude Oil',     color: '#9e9e9e', on: false, unit: 'USD'  },
+    { symbol: 'BTC-USD',  label: 'Bitcoin',           color: '#f7931a', on: false, unit: 'USD'  },
+    { symbol: 'GBPCAD=X', label: 'GBP / CAD',        color: '#f06292', on: false, unit: 'FX'   },
+    { symbol: 'USDCAD=X', label: 'USD / CAD',        color: '#7986cb', on: false, unit: 'FX'   },
+];
+
+const MAG7 = [
+    { symbol: 'AAPL',  ticker: 'AAPL',  name: 'Apple Inc.'       },
+    { symbol: 'MSFT',  ticker: 'MSFT',  name: 'Microsoft Corp.'  },
+    { symbol: 'NVDA',  ticker: 'NVDA',  name: 'NVIDIA Corp.'     },
+    { symbol: 'AMZN',  ticker: 'AMZN',  name: 'Amazon.com Inc.'  },
+    { symbol: 'GOOGL', ticker: 'GOOGL', name: 'Alphabet Inc.'    },
+    { symbol: 'META',  ticker: 'META',  name: 'Meta Platforms'   },
+    { symbol: 'TSLA',  ticker: 'TSLA',  name: 'Tesla Inc.'       },
+];
+
+const SECTORS = [
+    { symbol: 'IXN',  ticker: 'IXN',  name: 'Information Technology', etfName: 'iShares Global Tech ETF'                          },
+    { symbol: 'IXG',  ticker: 'IXG',  name: 'Financials',             etfName: 'iShares Global Financials ETF'                    },
+    { symbol: 'IXJ',  ticker: 'IXJ',  name: 'Health Care',            etfName: 'iShares Global Healthcare ETF'                    },
+    { symbol: 'IXC',  ticker: 'IXC',  name: 'Energy',                 etfName: 'iShares Global Energy ETF'                        },
+    { symbol: 'RXI',  ticker: 'RXI',  name: 'Consumer Discretionary', etfName: 'iShares Global Consumer Discretionary ETF'        },
+    { symbol: 'KXI',  ticker: 'KXI',  name: 'Consumer Staples',       etfName: 'iShares Global Consumer Staples ETF'              },
+    { symbol: 'EXI',  ticker: 'EXI',  name: 'Industrials',            etfName: 'iShares Global Industrials ETF'                   },
+    { symbol: 'MXI',  ticker: 'MXI',  name: 'Materials',              etfName: 'iShares Global Materials ETF'                     },
+    { symbol: 'IXP',  ticker: 'IXP',  name: 'Communication Services', etfName: 'iShares Global Comm Services ETF'                 },
+    { symbol: 'JXI',  ticker: 'JXI',  name: 'Utilities',              etfName: 'iShares Global Utilities ETF'                     },
+    { symbol: 'REET', ticker: 'REET', name: 'Real Estate',            etfName: 'iShares Global REIT ETF'                          },
+    // ── Benchmark ──
+    { symbol: 'ACWI', ticker: 'ACWI', name: 'MSCI ACWI',             etfName: 'iShares MSCI ACWI ETF',  isBenchmark: true        },
+];
+
+const REGIONS = [
+    { symbol: 'IVV',  ticker: 'IVV',  name: 'United States',    etfName: 'iShares Core S&P 500 ETF'                       },
+    { symbol: 'EWU',  ticker: 'EWU',  name: 'United Kingdom',    etfName: 'iShares MSCI United Kingdom ETF'                },
+    { symbol: 'EWC',  ticker: 'EWC',  name: 'Canada',            etfName: 'iShares MSCI Canada ETF'                        },
+    { symbol: 'IEUR', ticker: 'IEUR', name: 'Developed Europe',  etfName: 'iShares Core MSCI Europe ETF'                   },
+    { symbol: 'IPAC', ticker: 'IPAC', name: 'Developed Asia',    etfName: 'iShares Core MSCI Pacific ETF'                  },
+    { symbol: 'EEMA', ticker: 'EEMA', name: 'Emerging Asia',     etfName: 'iShares MSCI Emerging Markets Asia ETF'         },
+    { symbol: 'ILF',  ticker: 'ILF',  name: 'Latin America',     etfName: 'iShares Latin America 40 ETF'                   },
+    // ── Benchmark ──
+    { symbol: 'ACWI', ticker: 'ACWI', name: 'MSCI ACWI',         etfName: 'iShares MSCI ACWI ETF',  isBenchmark: true     },
+];
+
+// ─── Central Bank Data ────────────────────────────────────────────────────────
+// UPDATE THESE FIELDS after each central bank decision and monthly CPI release.
+// Rate sources: federalreserve.gov · bankofcanada.ca · bankofengland.co.uk
+// CPI sources:  bls.gov (US) · statcan.gc.ca (CA) · ons.gov.uk (UK)
+// ⚠ Rates and CPI sourced from training data (last confirmed ~mid-2025).
+//   Verify all figures against official publications before client use.
+const RATES = [
+    {
+        flag: '🇺🇸',
+        country: 'United States',
+        bank: 'Federal Reserve',
+        abbr: 'Fed',
+        rate: '3.75',
+        rateName: 'Federal Funds Target Range',
+        rateAsOf: 'Feb 2026',
+        lastDecision: 'Verify at federalreserve.gov',
+        nextMeeting: 'Verify at federalreserve.gov',
+        trend: 'cutting',
+        trendLabel: 'Easing cycle',
+        cpi: '2.4',
+        cpiPeriod: 'Feb 2026',
+        cpiSource: 'BLS',
+        verifyUrl: 'federalreserve.gov',
+    },
+    {
+        flag: '🇨🇦',
+        country: 'Canada',
+        bank: 'Bank of Canada',
+        abbr: 'BoC',
+        rate: '2.25',
+        rateName: 'Overnight Rate Target',
+        rateAsOf: 'Feb 2026',
+        lastDecision: 'Verify at bankofcanada.ca',
+        nextMeeting: 'Verify at bankofcanada.ca',
+        trend: 'cutting',
+        trendLabel: 'Extended easing cycle',
+        cpi: '2.3',
+        cpiPeriod: 'Feb 2026',
+        cpiSource: 'Statistics Canada',
+        verifyUrl: 'bankofcanada.ca',
+    },
+    {
+        flag: '🇬🇧',
+        country: 'United Kingdom',
+        bank: 'Bank of England',
+        abbr: 'BoE',
+        rate: '3.75',
+        rateName: 'Bank Rate',
+        rateAsOf: 'Feb 2026',
+        lastDecision: 'Verify at bankofengland.co.uk',
+        nextMeeting: 'Verify at bankofengland.co.uk',
+        trend: 'cutting',
+        trendLabel: 'Gradual easing',
+        cpi: '3.0',
+        cpiPeriod: 'Feb 2026',
+        cpiSource: 'ONS',
+        verifyUrl: 'bankofengland.co.uk',
+    },
+];
+
+// ─── Table sort state ───────────────────────────────────────
+let _mag7Data   = null;
+let _mag7Sort   = { col: null, dir: 'desc' };
+let _sectorSort = { col: null, dir: 'desc' };
+let _regionSort = { col: null, dir: 'desc' };
+
+// ─── Custom series (user-added via search) ─────────────────
+let _customSeries   = [];   // [{ symbol, label, color }]
+let _customColorIdx = 0;
+const CUSTOM_COLORS = [
+    '#ff9800','#00bcd4','#e91e63','#8bc34a',
+    '#ff5722','#9c27b0','#03a9f4','#ffeb3b',
+];
+
+// ═══════════════════════════════════════════════════════════
+// DATA FETCHING
+// ═══════════════════════════════════════════════════════════
+
+const _cache = {};
+
+async function fetchSymbol(symbol, { range = '1y', interval = '1d' } = {}) {
+    const cacheKey = `${symbol}__${range}__${interval}`;
+    if (_cache[cacheKey]) return _cache[cacheKey];
+
+    const enc = encodeURIComponent(symbol);
+    const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=${interval}&range=${range}&includePrePost=false`;
+
+    const isLocal   = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const localProxy = `/yf-proxy?url=${encodeURIComponent(yfUrl)}`;
+
+    const proxies = [
+        ...(isLocal ? [localProxy] : []),       // local server proxy — most reliable
+        `https://corsproxy.io/?${encodeURIComponent(yfUrl)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(yfUrl)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yfUrl)}`,
+    ];
+    // file:// origins are always blocked by Yahoo's CORS policy — go straight to proxies
+    const urls = (isLocal || location.protocol === 'file:') ? proxies : [yfUrl, ...proxies];
+
+    for (const url of urls) {
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 12000);
+            const res = await fetch(url, { signal: controller.signal });
+            clearTimeout(timer);
+
+            if (!res.ok) continue;
+
+            const json = await res.json();
+            const result = json?.chart?.result?.[0];
+            if (!result) continue;
+
+            const ts       = result.timestamp || [];
+            const rawClose = result.indicators?.quote?.[0]?.close  || [];
+            const rawVol   = result.indicators?.quote?.[0]?.volume || [];
+            const adjClose = result.indicators?.adjclose?.[0]?.adjclose || rawClose;
+
+            const history = [];
+            for (let i = 0; i < ts.length; i++) {
+                const p = adjClose[i] ?? rawClose[i];
+                if (p !== null && p !== undefined && !isNaN(p)) {
+                    history.push({ ts: ts[i], price: p, vol: rawVol[i] ?? null });
+                }
+            }
+            if (history.length === 0) continue;
+
+            const data = {
+                symbol,
+                history,
+                currentPrice: result.meta?.regularMarketPrice ?? history[history.length - 1].price,
+            };
+            _cache[cacheKey] = data;
+            return data;
+
+        } catch (_) { /* try next */ }
+    }
+    return null;
+}
+
+
+async function searchYahoo(query) {
+    const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=6&newsCount=0&enableFuzzyQuery=false`;
+    const isLocal   = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const urls = [
+        ...(isLocal ? [`/yf-proxy?url=${encodeURIComponent(searchUrl)}`] : []),
+        `https://corsproxy.io/?${encodeURIComponent(searchUrl)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(searchUrl)}`,
+    ];
+    for (const url of urls) {
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(url, { signal: controller.signal });
+            clearTimeout(timer);
+            if (!res.ok) continue;
+            const json = await res.json();
+            const quotes = (json?.quotes || []).filter(q => q.quoteType !== 'OPTION' && q.symbol);
+            if (quotes.length) return quotes;
+        } catch (_) {}
+    }
+    return [];
+}
+
+// ═══════════════════════════════════════════════════════════
+// PERFORMANCE CALCULATIONS
+// ═══════════════════════════════════════════════════════════
+
+function priceAt(history, targetDate) {
+    const tgt = Math.floor(targetDate.getTime() / 1000);
+    let last = null;
+    for (const p of history) {
+        if (p.ts <= tgt) last = p.price;
+        else break;
+    }
+    return last;
+}
+
+// Price return from fromDate to currentPrice.
+// Pass regularMarketPrice as currentPrice so the numerator matches the live
+// price Yahoo Finance displays — aligning methodology with their price return.
+function ret(history, fromDate, currentPrice) {
+    if (!history || history.length < 2) return null;
+    const cur  = currentPrice ?? history[history.length - 1].price;
+    const past = priceAt(history, fromDate);
+    if (!past) return null;
+    return ((cur - past) / past) * 100;
+}
+
+function getPeriods() {
+    const n = new Date();
+    const ago = (months, days) => {
+        const d = new Date(n);
+        d.setMonth(d.getMonth() - months);
+        d.setDate(d.getDate() - days);
+        return d;
+    };
+    return {
+        ytd: new Date(n.getFullYear() - 1, 11, 31),
+        d1:  ago(0, 1),
+        w1:  ago(0, 7),
+        m1:  ago(1, 0),
+        m3:  ago(3, 0),
+        m6:  ago(6, 0),
+        y1:  ago(12, 0),
+    };
+}
+
+// Relative volume: avg daily dollar volume for a period relative to the
+// trailing 1Y average. 1.0× = at baseline; 2.0× = double normal activity.
+// A directional-neutral signal — high values flag unusual repositioning.
+function calcRelVol(history, fromDate) {
+    if (!history || history.length < 2) return null;
+    const validAll = history.filter(p => p.vol != null);
+    if (validAll.length === 0) return null;
+    const baselineAvg = validAll.reduce((s, p) => s + p.price * p.vol, 0) / validAll.length;
+    if (baselineAvg === 0) return null;
+    const tgt = Math.floor(fromDate.getTime() / 1000);
+    const validPeriod = history.filter(p => p.ts >= tgt && p.vol != null);
+    if (validPeriod.length === 0) return null;
+    const periodAvg = validPeriod.reduce((s, p) => s + p.price * p.vol, 0) / validPeriod.length;
+    return periodAvg / baselineAvg;
+}
+
+// Average daily dollar volume over the full history (used as the reference column).
+function calcAvgDailyVol(history) {
+    if (!history || history.length === 0) return null;
+    const valid = history.filter(p => p.vol != null);
+    if (valid.length === 0) return null;
+    return valid.reduce((s, p) => s + p.price * p.vol, 0) / valid.length;
+}
+
+// ═══════════════════════════════════════════════════════════
+// FORMATTING
+// ═══════════════════════════════════════════════════════════
+
+function fmtPct(v, pill = false) {
+    if (v === null || v === undefined || isNaN(v)) {
+        return pill ? '<span class="pill muted">—</span>' : '<span class="muted">—</span>';
+    }
+    const cls  = v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : 'muted';
+    const sign = v > 0 ? '+' : '';
+    const str  = `${sign}${v.toFixed(2)}%`;
+    return pill
+        ? `<span class="pill ${cls}">${str}</span>`
+        : `<span class="${cls}">${str}</span>`;
+}
+
+function fmtPrice(v, dec = 2) {
+    if (v == null || isNaN(v)) return '—';
+    return v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+function fmtDateStr(d) {
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Format a chart value for tooltip based on the index type
+function fmtChartVal(unit, v) {
+    if (v === null || v === undefined) return '—';
+    if (unit === 'FX')  return v.toFixed(4);
+    if (unit === 'USD') return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // index points — large numbers
+    return v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+}
+
+function fmtAUM(v) {
+    if (v == null || isNaN(v)) return '—';
+    if (v >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B';
+    if (v >= 1e6) return '$' + (v / 1e6).toFixed(0) + 'M';
+    return '$' + v.toLocaleString('en-US');
+}
+
+// Colour thresholds: ≥2× amber (notable), ≥1.3× white (elevated),
+// 0.5–1.3× grey (normal), <0.5× muted (unusually quiet)
+function fmtRelVol(v) {
+    if (v === null || v === undefined || isNaN(v)) return '<span class="muted">—</span>';
+    const color = v >= 2.0 ? '#e3b341'
+                : v >= 1.3 ? 'var(--text)'
+                : v <  0.5 ? 'var(--text3)'
+                :             'var(--text2)';
+    return `<span style="font-variant-numeric:tabular-nums;color:${color}">${v.toFixed(2)}&times;</span>`;
+}
+
+function nowTs() {
+    return `Data fetched ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} on ${fmtDateStr(new Date())}`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// TABLE SORT HELPERS
+// ═══════════════════════════════════════════════════════════
+
+// Returns a sorted array of indices into `items`. Nulls always sort to the bottom.
+function sortedOrder(items, sortState, getVal) {
+    const indices = items.map((_, i) => i);
+    if (!sortState.col) return indices;
+    return indices.sort((a, b) => {
+        const va = getVal(a), vb = getVal(b);
+        if (va === null && vb === null) return 0;
+        if (va === null) return 1;
+        if (vb === null) return -1;
+        if (typeof va === 'string') {
+            const c = va.localeCompare(vb);
+            return sortState.dir === 'asc' ? c : -c;
+        }
+        return sortState.dir === 'desc' ? vb - va : va - vb;
+    });
+}
+
+// Builds a <tr> of sortable <th> elements inside `theadEl`.
+// cols: [{ key, label, left, defaultDir }]
+function buildSortHead(theadEl, cols, sortState, onSort) {
+    const tr = document.createElement('tr');
+    cols.forEach(col => {
+        const th = document.createElement('th');
+        if (col.left) th.style.textAlign = 'left';
+        th.className = 'sortable';
+        const active = sortState.col === col.key;
+        const icon   = active ? (sortState.dir === 'desc' ? ' ▼' : ' ▲') : '';
+        th.innerHTML = col.label + (icon ? `<span style="color:var(--accent)">${icon}</span>` : '');
+        th.addEventListener('click', () => onSort(col.key, col.defaultDir ?? 'desc'));
+        tr.appendChild(th);
+    });
+    theadEl.innerHTML = '';
+    theadEl.appendChild(tr);
+}
+
+// ═══════════════════════════════════════════════════════════
+// CUSTOM SERIES  (user-added via search)
+// ═══════════════════════════════════════════════════════════
+
+async function addCustomSeries(symbol, label) {
+    if (_customSeries.find(s => s.symbol === symbol)) return;
+    if (INDICES.find(i => i.symbol === symbol)) return;
+    const color = CUSTOM_COLORS[_customColorIdx % CUSTOM_COLORS.length];
+    _customColorIdx++;
+    _customSeries.push({ symbol, label: label || symbol, color });
+    await loadChart(_activePeriod);
+}
+
+function removeCustomSeries(symbol) {
+    _customSeries = _customSeries.filter(s => s.symbol !== symbol);
+    loadChart(_activePeriod);
+}
+
+function initSearch() {
+    const input    = document.getElementById('chartSearchInput');
+    const btn      = document.getElementById('chartSearchBtn');
+    const dropdown = document.getElementById('searchDropdown');
+
+    let debounce = null;
+
+    function showDropdown(html) {
+        dropdown.innerHTML = html;
+        dropdown.style.display = 'block';
+    }
+    function hideDropdown() {
+        dropdown.style.display = 'none';
+        dropdown.innerHTML = '';
+    }
+
+    input.addEventListener('input', () => {
+        clearTimeout(debounce);
+        const q = input.value.trim();
+        if (q.length < 2) { hideDropdown(); return; }
+        showDropdown('<div class="search-msg">Searching…</div>');
+        debounce = setTimeout(async () => {
+            const results = await searchYahoo(q);
+            if (!results.length) { showDropdown('<div class="search-msg">No results found.</div>'); return; }
+            dropdown.innerHTML = '';
+            results.slice(0, 6).forEach(r => {
+                const item = document.createElement('div');
+                item.className = 'search-item';
+                const name = r.longname || r.shortname || r.symbol;
+                item.innerHTML = `
+                    <span class="search-sym">${r.symbol}</span>
+                    <span class="search-name" title="${name}">${name}</span>
+                    <span class="search-exch">${r.exchange || ''}</span>`;
+                item.addEventListener('click', async () => {
+                    hideDropdown();
+                    input.value = '';
+                    btn.disabled = true; btn.textContent = 'Adding…';
+                    await addCustomSeries(r.symbol, r.shortname || r.symbol);
+                    btn.disabled = false; btn.textContent = 'Add to chart';
+                });
+                dropdown.appendChild(item);
+            });
+            dropdown.style.display = 'block';
+        }, 380);
+    });
+
+    async function doAdd() {
+        const q = input.value.trim();
+        if (!q) return;
+        hideDropdown();
+        btn.disabled = true; btn.textContent = 'Adding…';
+        // Try as a direct ticker first (fast path)
+        const period = CHART_PERIODS.find(p => p.key === _activePeriod);
+        const direct = await fetchSymbol(q.toUpperCase(), { range: period.range, interval: period.interval });
+        if (direct) {
+            input.value = '';
+            await addCustomSeries(q.toUpperCase(), q.toUpperCase());
+        } else {
+            // Fall back to search
+            const results = await searchYahoo(q);
+            if (results.length) {
+                input.value = '';
+                const r = results[0];
+                await addCustomSeries(r.symbol, r.shortname || r.symbol);
+            } else {
+                showDropdown('<div class="search-msg">Symbol not found — check the ticker and try again.</div>');
+                setTimeout(hideDropdown, 2500);
+            }
+        }
+        btn.disabled = false; btn.textContent = 'Add to chart';
+    }
+
+    btn.addEventListener('click', doAdd);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter')  doAdd();
+        if (e.key === 'Escape') { hideDropdown(); input.value = ''; }
+    });
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#chartSearch')) hideDropdown();
+    });
+}
+
+// ═══════════════════════════════════════════════════════════
+// END-OF-LINE PERFORMANCE LABELS  (Index Chart plugin)
+// ═══════════════════════════════════════════════════════════
+const endLabelPlugin = {
+    id: 'endLabels',
+    afterDraw(chart) {
+        const { ctx, chartArea, scales } = chart;
+        if (!chartArea || !scales.y || !scales.x) return;
+
+        const FONT_SZ  = 10;
+        const PAD_X    = 5;
+        const PAD_Y    = 3;
+        const LINE_GAP = 3;
+        const BOX_H    = FONT_SZ * 2 + LINE_GAP + PAD_Y * 2;  // two lines tall
+        const TAG_X    = scales.y.right + 4;   // sits in the right layout padding
+
+        // Collect visible series and their last non-null % value + real price
+        const items = [];
+        chart.data.datasets.forEach(ds => {
+            if (ds.hidden) return;
+            let v = null, realPrice = null;
+            for (let i = ds.data.length - 1; i >= 0; i--) {
+                if (ds.data[i] !== null && ds.data[i] !== undefined) {
+                    v = ds.data[i];
+                    realPrice = ds.realPrices?.[i] ?? null;
+                    break;
+                }
+            }
+            if (v === null) return;
+            items.push({ color: ds.borderColor, v, yPx: scales.y.getPixelForValue(v), realPrice, unit: ds.unit ?? 'USD' });
+        });
+        if (!items.length) return;
+
+        // Sort top→bottom, then push overlapping labels apart
+        items.sort((a, b) => a.yPx - b.yPx);
+        items[0].labelY = items[0].yPx;
+        for (let i = 1; i < items.length; i++) {
+            const minY = items[i - 1].labelY + BOX_H + 2;
+            items[i].labelY = Math.max(items[i].yPx, minY);
+        }
+
+        items.forEach(({ color, v, yPx, labelY, realPrice, unit }) => {
+            ctx.save();
+
+            // Dashed guide line across the full plot area
+            ctx.beginPath();
+            ctx.setLineDash([3, 4]);
+            ctx.strokeStyle = color;
+            ctx.lineWidth   = 1;
+            ctx.globalAlpha = 0.4;
+            ctx.moveTo(chartArea.left, yPx);
+            ctx.lineTo(chartArea.right, yPx);
+            ctx.stroke();
+
+            // Performance tag pill
+            ctx.globalAlpha = 1;
+            ctx.setLineDash([]);
+            const sign   = v >= 0 ? '+' : '';
+            const pctStr = `${sign}${v.toFixed(2)}%`;
+            let priceStr = '';
+            if (realPrice != null) {
+                if (unit === 'FX')       priceStr = realPrice.toFixed(4);
+                else if (unit === 'USD') priceStr = '$' + realPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                else                     priceStr = realPrice.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+            }
+            ctx.font = `600 ${FONT_SZ}px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif`;
+            const boxW = Math.max(ctx.measureText(priceStr).width, ctx.measureText(pctStr).width) + PAD_X * 2;
+            const tagY = labelY - BOX_H / 2;
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(TAG_X, tagY, boxW, BOX_H, 3);
+            else ctx.rect(TAG_X, tagY, boxW, BOX_H);
+            ctx.fill();
+
+            ctx.fillStyle    = '#0d1117';
+            ctx.textAlign    = 'left';
+            ctx.textBaseline = 'middle';
+            const line1Y = tagY + PAD_Y + FONT_SZ / 2;
+            const line2Y = line1Y + FONT_SZ + LINE_GAP;
+            if (priceStr) {
+                ctx.fillText(priceStr, TAG_X + PAD_X, line1Y);
+                ctx.fillText(pctStr,   TAG_X + PAD_X, line2Y);
+            } else {
+                ctx.fillText(pctStr, TAG_X + PAD_X, labelY);
+            }
+
+            ctx.restore();
+        });
+    }
+};
+
+// ═══════════════════════════════════════════════════════════
+// INDEX CHART
+// ═══════════════════════════════════════════════════════════
+
+const CHART_PERIODS = [
+    { key: '1D',  label: '1D',  title: '1 Day',        badge: '1D Intraday', range: '1d',  interval: '5m'  },
+    { key: '1W',  label: '1W',  title: '1 Week',        badge: '1W Daily',    range: '5d',  interval: '1d'  },
+    { key: '1M',  label: '1M',  title: '1 Month',       badge: '1M Daily',    range: '1mo', interval: '1d'  },
+    { key: '3M',  label: '3M',  title: '3 Months',      badge: '3M Daily',    range: '3mo', interval: '1d'  },
+    { key: '6M',  label: '6M',  title: '6 Months',      badge: '6M Daily',    range: '6mo', interval: '1d'  },
+    { key: 'YTD', label: 'YTD', title: 'Year to Date',  badge: 'YTD Daily',   range: 'ytd', interval: '1d'  },
+    { key: '1Y',  label: '1Y',  title: '1 Year',        badge: '1Y Daily',    range: '1y',  interval: '1d'  },
+    { key: '3Y',  label: '3Y',  title: '3 Years',       badge: '3Y Weekly',   range: '3y',  interval: '1wk' },
+    { key: '5Y',  label: '5Y',  title: '5 Years',       badge: '5Y Weekly',   range: '5y',  interval: '1wk' },
+];
+
+let _chart = null;
+let _activePeriod = '1Y';
+let _indexResults = [];
+
+function buildToggles(datasets) {
+    const container = document.getElementById('indexToggles');
+    container.innerHTML = '';
+
+    // Default indices
+    INDICES.forEach((idx, i) => {
+        const btn = document.createElement('button');
+        btn.className = `toggle-btn${idx.on ? ' on' : ''}`;
+        if (idx.on) { btn.style.color = idx.color; btn.style.borderColor = idx.color; }
+        const _d = _indexResults[i];
+        let _priceStr = '';
+        if (_d?.currentPrice != null) {
+            const _p = _d.currentPrice;
+            if (idx.unit === 'FX')       _priceStr = _p.toFixed(4);
+            else if (idx.unit === 'USD') _priceStr = '$' + _p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            else                         _priceStr = _p.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+        }
+        btn.innerHTML = `<span class="swatch" style="background:${idx.color}"></span>${idx.label}${_priceStr ? `<span style="font-size:10px;color:var(--text3);margin-left:4px;font-variant-numeric:tabular-nums">${_priceStr}</span>` : ''}`;
+        btn.addEventListener('click', () => {
+            if (!_chart) return;
+            const ds = _chart.data.datasets[i];
+            ds.hidden = !ds.hidden;
+            idx.on = !ds.hidden;
+            btn.classList.toggle('on', idx.on);
+            btn.style.color       = idx.on ? idx.color : '';
+            btn.style.borderColor = idx.on ? idx.color : '';
+            _chart.update();
+        });
+        container.appendChild(btn);
+    });
+
+    // Custom series — toggle + remove button
+    _customSeries.forEach((cs, j) => {
+        const dsIdx   = INDICES.length + j;
+        const wrap    = document.createElement('div');
+        wrap.className = 'custom-toggle-wrap';
+
+        const btn = document.createElement('button');
+        btn.className = 'toggle-btn on';
+        btn.style.color = cs.color; btn.style.borderColor = cs.color;
+        btn.innerHTML = `<span class="swatch" style="background:${cs.color}"></span>${cs.label}`;
+        btn.addEventListener('click', () => {
+            if (!_chart) return;
+            const ds = _chart.data.datasets[dsIdx];
+            ds.hidden = !ds.hidden;
+            btn.classList.toggle('on', !ds.hidden);
+            btn.style.color       = !ds.hidden ? cs.color : '';
+            btn.style.borderColor = !ds.hidden ? cs.color : '';
+            _chart.update();
+        });
+
+        const rm = document.createElement('button');
+        rm.className = 'custom-remove-btn';
+        rm.textContent = '×';
+        rm.style.borderColor = cs.color; rm.style.color = cs.color;
+        rm.title = `Remove ${cs.label}`;
+        rm.addEventListener('click', () => removeCustomSeries(cs.symbol));
+
+        wrap.appendChild(btn);
+        wrap.appendChild(rm);
+        container.appendChild(wrap);
+    });
+}
+
+function buildPeriodBar() {
+    const bar = document.getElementById('periodBar');
+    bar.innerHTML = '';
+    CHART_PERIODS.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = `period-btn${p.key === _activePeriod ? ' active' : ''}`;
+        btn.textContent = p.label;
+        btn.dataset.period = p.key;
+        btn.addEventListener('click', () => { if (p.key !== _activePeriod) loadChart(p.key); });
+        bar.appendChild(btn);
+    });
+}
+
+function setPeriodLoading(loading) {
+    document.querySelectorAll('.period-btn').forEach(b => b.disabled = loading);
+    document.getElementById('indexChart').closest('.chart-wrap').classList.toggle('loading', loading);
+}
+
+async function loadChart(periodKey = '1Y') {
+    const period = CHART_PERIODS.find(p => p.key === periodKey) ?? CHART_PERIODS[CHART_PERIODS.length - 1];
+    _activePeriod = periodKey;
+
+    // Update header UI
+    document.getElementById('chartTitle').textContent = `Major Market Indices \u2014 ${period.title} Performance`;
+    document.getElementById('chartBadge').textContent = period.badge;
+    document.querySelectorAll('.period-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.period === periodKey));
+
+    setPeriodLoading(true);
+    const [results, customResults] = await Promise.all([
+        Promise.all(INDICES.map(idx =>
+            fetchSymbol(idx.symbol, { range: period.range, interval: period.interval }))),
+        Promise.all(_customSeries.map(cs =>
+            fetchSymbol(cs.symbol, { range: period.range, interval: period.interval }))),
+    ]);
+    setPeriodLoading(false);
+    _indexResults = results;
+
+    let ref = [];
+    results.forEach(r => { if (r && r.history.length > ref.length) ref = r.history; });
+    if (ref.length === 0) return;
+
+    // Label format depends on period
+    const isIntraday = period.interval === '5m';
+    const labels = ref.map(p => {
+        const d = new Date(p.ts * 1000);
+        if (isIntraday) return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        if (periodKey === '1W' || periodKey === '1M')
+            return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        if (periodKey === '3Y' || periodKey === '5Y')
+            return d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
+    });
+
+    // Key function for aligning series:
+    // - Daily data: use UTC date string (YYYY-MM-DD) to normalise cross-exchange
+    //   timezone offsets (NYSE midnight EST = 05:00 UTC, LSE = 00:00 UTC).
+    // - Intraday data: use exact Unix timestamp — multiple bars share the same
+    //   date string within a day, so date-only matching would collapse them.
+    const tsToDate = ts => new Date(ts * 1000).toISOString().slice(0, 10);
+    const makeKey  = ts => isIntraday ? String(ts) : tsToDate(ts);
+
+    const datasets = INDICES.map((idx, i) => {
+        const data = results[i];
+        let pctValues  = [];   // % change from period start — drives the chart line
+        let realValues = [];   // actual prices — shown in tooltip
+
+        if (data && data.history.length > 0) {
+            const keyMap = new Map(data.history.map(p => [makeKey(p.ts), p.price]));
+            const base   = data.history[0].price;
+
+            ref.forEach(p => {
+                const key = makeKey(p.ts);
+                let px = keyMap.get(key);
+                // For weekends / series-specific holidays carry the last close forward (daily only)
+                if (px === undefined && !isIntraday) px = priceAt(data.history, new Date(p.ts * 1000));
+                if (px != null) {
+                    pctValues.push(((px - base) / base) * 100);
+                    realValues.push(px);
+                } else {
+                    pctValues.push(null);
+                    realValues.push(null);
+                }
+            });
+        } else {
+            pctValues  = ref.map(() => null);
+            realValues = ref.map(() => null);
+        }
+
+        return {
+            label:      idx.label,
+            data:       pctValues,
+            realPrices: realValues,   // custom field accessed in tooltip
+            unit:       idx.unit,     // custom field used by endLabelPlugin
+            borderColor: idx.color,
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHoverBackgroundColor: idx.color,
+            tension: 0.2,
+            hidden: !idx.on,
+            spanGaps: true,
+        };
+    });
+
+    // Append custom series datasets
+    _customSeries.forEach((cs, j) => {
+        const data = customResults[j];
+        let pctValues = [], realValues = [];
+        if (data && data.history.length > 0) {
+            const keyMap = new Map(data.history.map(p => [makeKey(p.ts), p.price]));
+            const base   = data.history[0].price;
+            ref.forEach(p => {
+                const key = makeKey(p.ts);
+                let px = keyMap.get(key);
+                if (px === undefined && !isIntraday) px = priceAt(data.history, new Date(p.ts * 1000));
+                if (px != null) { pctValues.push(((px - base) / base) * 100); realValues.push(px); }
+                else            { pctValues.push(null); realValues.push(null); }
+            });
+        } else {
+            pctValues  = ref.map(() => null);
+            realValues = ref.map(() => null);
+        }
+        datasets.push({
+            label: cs.label, data: pctValues, realPrices: realValues, unit: 'USD',
+            borderColor: cs.color, backgroundColor: 'transparent',
+            borderWidth: 1.8, pointRadius: 0, pointHoverRadius: 4,
+            pointHoverBackgroundColor: cs.color, tension: 0.2, hidden: false, spanGaps: true,
+        });
+    });
+
+    buildToggles(datasets);
+
+    const ctx = document.getElementById('indexChart').getContext('2d');
+    if (_chart) _chart.destroy();
+
+    _chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        plugins: [endLabelPlugin],
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { right: window.innerWidth < 480 ? 54 : 72 } },
+            interaction: { mode: 'index', intersect: false },
+            animation: { duration: 350 },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1c2333',
+                    borderColor: '#30363d',
+                    borderWidth: 1,
+                    titleColor: '#8b949e',
+                    bodyColor: '#e6edf3',
+                    padding: 12,
+                    itemSort: (a, b) => (b.raw ?? -Infinity) - (a.raw ?? -Infinity),
+                    callbacks: {
+                        label(ctx) {
+                            if (ctx.raw === null) return null;
+                            const idx       = INDICES[ctx.datasetIndex];
+                            const unit      = idx?.unit ?? 'USD';
+                            const realPrice = ctx.dataset.realPrices?.[ctx.dataIndex];
+                            const priceStr  = realPrice != null ? fmtChartVal(unit, realPrice) : '';
+                            const sign = ctx.raw >= 0 ? '+' : '';
+                            return ` ${ctx.dataset.label}:  ${priceStr}  (${sign}${ctx.raw.toFixed(2)}%)`;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    border: { color: '#30363d' },
+                    ticks: { color: '#6e7681', maxTicksLimit: 13, maxRotation: 0, autoSkip: true },
+                },
+                y: {
+                    position: 'right',
+                    grid: { color: 'rgba(48,54,61,.55)' },
+                    border: { color: '#30363d', dash: [4, 4] },
+                    ticks: {
+                        color: '#6e7681',
+                        padding: 8,
+                        callback: v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%',
+                    },
+                },
+            },
+        },
+    });
+
+    document.getElementById('chartSrcTs').textContent = nowTs();
+}
+
+// ═══════════════════════════════════════════════════════════
+// MAGNIFICENT SEVEN TABLE
+// ═══════════════════════════════════════════════════════════
+
+const MAG7_COLS = [
+    { key: 'name',  label: 'Company',     left: true,  defaultDir: 'asc'  },
+    { key: 'price', label: 'Price (USD)',  left: false, defaultDir: 'desc' },
+    { key: 'ytd',   label: 'YTD',          left: false, defaultDir: 'desc' },
+    { key: 'd1',    label: '1D',            left: false, defaultDir: 'desc' },
+    { key: 'w1',    label: '1W',            left: false, defaultDir: 'desc' },
+    { key: 'm1',    label: '1M',            left: false, defaultDir: 'desc' },
+    { key: 'm3',    label: '3M',            left: false, defaultDir: 'desc' },
+    { key: 'm6',    label: '6M',            left: false, defaultDir: 'desc' },
+    { key: 'y1',    label: '1Y',            left: false, defaultDir: 'desc' },
+];
+
+function renderMag7Table() {
+    if (!_mag7Data) return;
+    const P = getPeriods();
+
+    // Header
+    buildSortHead(document.getElementById('mag7Head'), MAG7_COLS, _mag7Sort, (col, defaultDir) => {
+        _mag7Sort.dir = _mag7Sort.col === col ? (_mag7Sort.dir === 'desc' ? 'asc' : 'desc') : defaultDir;
+        _mag7Sort.col = col;
+        renderMag7Table();
+    });
+
+    // Sort
+    function getVal(i) {
+        const d = _mag7Data[i];
+        if (!d) return null;
+        switch (_mag7Sort.col) {
+            case 'name':  return MAG7[i].name;
+            case 'price': return d.currentPrice ?? null;
+            case 'ytd':   return ret(d.history, P.ytd, d.currentPrice);
+            case 'd1':    return ret(d.history, P.d1,  d.currentPrice);
+            case 'w1':    return ret(d.history, P.w1,  d.currentPrice);
+            case 'm1':    return ret(d.history, P.m1,  d.currentPrice);
+            case 'm3':    return ret(d.history, P.m3,  d.currentPrice);
+            case 'm6':    return ret(d.history, P.m6,  d.currentPrice);
+            case 'y1':    return ret(d.history, P.y1,  d.currentPrice);
+            default:      return null;
+        }
+    }
+
+    const tbody = document.getElementById('mag7Body');
+    tbody.innerHTML = '';
+    sortedOrder(MAG7, _mag7Sort, getVal).forEach(i => {
+        const stock = MAG7[i];
+        const d     = _mag7Data[i];
+        const tr    = document.createElement('tr');
+        if (!d) {
+            tr.innerHTML = `
+                <td><div class="tcol"><span class="tsym">${stock.ticker}</span><span class="tname">${stock.name}</span></div></td>
+                <td class="muted">—</td>
+                <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
+                <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>`;
+        } else {
+            const h = d.history;
+            tr.innerHTML = `
+                <td><div class="tcol"><span class="tsym">${stock.ticker}</span><span class="tname">${stock.name}</span></div></td>
+                <td class="price">${fmtPrice(d.currentPrice)}</td>
+                <td>${fmtPct(ret(h, P.ytd, d.currentPrice), true)}</td>
+                <td>${fmtPct(ret(h, P.d1,  d.currentPrice))}</td>
+                <td>${fmtPct(ret(h, P.w1,  d.currentPrice))}</td>
+                <td>${fmtPct(ret(h, P.m1,  d.currentPrice))}</td>
+                <td>${fmtPct(ret(h, P.m3,  d.currentPrice))}</td>
+                <td>${fmtPct(ret(h, P.m6,  d.currentPrice))}</td>
+                <td>${fmtPct(ret(h, P.y1,  d.currentPrice))}</td>`;
+        }
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadMag7() {
+    document.getElementById('mag7Body').innerHTML =
+        '<tr class="loading-row"><td colspan="9"><span class="spinner"></span>Loading Magnificent Seven&hellip;</td></tr>';
+    _mag7Data = await Promise.all(MAG7.map(s => fetchSymbol(s.symbol)));
+    renderMag7Table();
+    document.getElementById('mag7SrcTs').textContent = nowTs();
+}
+
+// ═══════════════════════════════════════════════════════════
+// MSCI SECTOR TABLE
+// ═══════════════════════════════════════════════════════════
+
+let _sectorView = 'performance'; // 'performance' | 'relvol'
+let _sectorData = null;          // cached price results (set by loadSectors)
+
+function buildSectorViewBar() {
+    const bar = document.getElementById('sectorViewBar');
+    bar.innerHTML = '';
+    [{ key: 'performance', label: 'Performance' }, { key: 'relvol', label: 'Rel. Volume' }].forEach(v => {
+        const btn = document.createElement('button');
+        btn.className = `period-btn${v.key === _sectorView ? ' active' : ''}`;
+        btn.textContent = v.label;
+        btn.dataset.view = v.key;
+        btn.addEventListener('click', () => { if (v.key !== _sectorView) switchSectorView(v.key); });
+        bar.appendChild(btn);
+    });
+}
+
+function switchSectorView(view) {
+    _sectorView = view;
+    document.querySelectorAll('#sectorViewBar .period-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.view === view));
+
+    const isRelvol = view === 'relvol';
+    document.getElementById('sectorFlowsNote').style.display = isRelvol ? 'block' : 'none';
+    document.getElementById('sectorDesc').textContent = isRelvol
+        ? 'Relative volume — avg daily $vol vs. 1Y baseline · 1.0× = at average · >1.5× elevated · MSCI ACWI shown as benchmark'
+        : 'GICS sector performance proxied via iShares global ETFs · Prices in USD · MSCI ACWI shown as benchmark';
+
+    renderSectorTable();
+}
+
+function renderSectorTable() {
+    if (!_sectorData) return;
+    const P        = getPeriods();
+    const isRelvol = _sectorView === 'relvol';
+
+    const cols = [
+        { key: 'name',  label: 'Sector',                                  left: true,  defaultDir: 'asc'  },
+        { key: 'etf',   label: 'ETF',                                     left: true,  defaultDir: 'asc'  },
+        { key: 'price', label: isRelvol ? 'Avg $Vol/Day' : 'Price (USD)', left: false, defaultDir: 'desc' },
+        { key: 'ytd',   label: 'YTD',  left: false, defaultDir: 'desc' },
+        { key: 'd1',    label: '1D',   left: false, defaultDir: 'desc' },
+        { key: 'w1',    label: '1W',   left: false, defaultDir: 'desc' },
+        { key: 'm1',    label: '1M',   left: false, defaultDir: 'desc' },
+        { key: 'm3',    label: '3M',   left: false, defaultDir: 'desc' },
+        { key: 'm6',    label: '6M',   left: false, defaultDir: 'desc' },
+        { key: 'y1',    label: '1Y',   left: false, defaultDir: 'desc' },
+    ];
+
+    buildSortHead(document.getElementById('sectorHead'), cols, _sectorSort, (col, defaultDir) => {
+        _sectorSort.dir = _sectorSort.col === col ? (_sectorSort.dir === 'desc' ? 'asc' : 'desc') : defaultDir;
+        _sectorSort.col = col;
+        renderSectorTable();
+    });
+
+    function getVal(i) {
+        const d = _sectorData[i];
+        if (!d) return null;
+        switch (_sectorSort.col) {
+            case 'name':  return SECTORS[i].name;
+            case 'etf':   return SECTORS[i].ticker;
+            case 'price': return isRelvol ? calcAvgDailyVol(d.history) : d.currentPrice ?? null;
+            case 'ytd':   return isRelvol ? calcRelVol(d.history, P.ytd) : ret(d.history, P.ytd, d.currentPrice);
+            case 'd1':    return isRelvol ? calcRelVol(d.history, P.d1)  : ret(d.history, P.d1,  d.currentPrice);
+            case 'w1':    return isRelvol ? calcRelVol(d.history, P.w1)  : ret(d.history, P.w1,  d.currentPrice);
+            case 'm1':    return isRelvol ? calcRelVol(d.history, P.m1)  : ret(d.history, P.m1,  d.currentPrice);
+            case 'm3':    return isRelvol ? calcRelVol(d.history, P.m3)  : ret(d.history, P.m3,  d.currentPrice);
+            case 'm6':    return isRelvol ? calcRelVol(d.history, P.m6)  : ret(d.history, P.m6,  d.currentPrice);
+            case 'y1':    return isRelvol ? calcRelVol(d.history, P.y1)  : ret(d.history, P.y1,  d.currentPrice);
+            default:      return null;
+        }
+    }
+
+    // Benchmarks always pinned to bottom; sort the rest
+    const nonBench = SECTORS.map((s, i) => i).filter(i => !SECTORS[i].isBenchmark);
+    const benchIdx = SECTORS.map((s, i) => i).filter(i =>  SECTORS[i].isBenchmark);
+    const order    = [...sortedOrder(nonBench.map(i => i), _sectorSort, i => getVal(nonBench[i])).map(j => nonBench[j]), ...benchIdx];
+
+    const tbody = document.getElementById('sectorBody');
+    tbody.innerHTML = '';
+    order.forEach(i => {
+        const sector = SECTORS[i];
+        const d      = _sectorData[i];
+        const tr     = document.createElement('tr');
+        if (sector.isBenchmark) tr.className = 'benchmark-row';
+
+        const nameCell = `<td>${sector.name}${sector.isBenchmark ? '<span class="benchmark-badge">Benchmark</span>' : ''}</td>`;
+        const etfCell  = `<td><div class="tcol">
+            <span style="font-weight:600;color:${d ? 'var(--accent)' : 'var(--text2)'}">${sector.ticker}</span>
+            <span class="tetf-name">${sector.etfName}</span>
+        </div></td>`;
+
+        if (!d) {
+            tr.innerHTML = nameCell + etfCell + '<td class="muted">—</td>' + '<td class="muted">—</td>'.repeat(7);
+        } else if (isRelvol) {
+            const h = d.history;
+            tr.innerHTML = nameCell + etfCell +
+                `<td class="price">${fmtAUM(calcAvgDailyVol(h))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.ytd))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.d1))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.w1))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.m1))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.m3))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.m6))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.y1))}</td>`;
+        } else {
+            const h = d.history;
+            tr.innerHTML = nameCell + etfCell +
+                `<td class="price">${fmtPrice(d.currentPrice)}</td>
+                 <td>${fmtPct(ret(h, P.ytd, d.currentPrice), true)}</td>
+                 <td>${fmtPct(ret(h, P.d1,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.w1,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.m1,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.m3,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.m6,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.y1,  d.currentPrice))}</td>`;
+        }
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadSectors() {
+    _sectorData = await Promise.all(SECTORS.map(s => fetchSymbol(s.symbol)));
+    renderSectorTable();
+    document.getElementById('sectorSrcTs').textContent = nowTs();
+}
+
+// ═══════════════════════════════════════════════════════════
+// MSCI REGIONAL TABLE
+// ═══════════════════════════════════════════════════════════
+
+let _regionView = 'performance'; // 'performance' | 'relvol'
+let _regionData = null;          // cached price results (set by loadRegions)
+
+function buildRegionViewBar() {
+    const bar = document.getElementById('regionViewBar');
+    bar.innerHTML = '';
+    [{ key: 'performance', label: 'Performance' }, { key: 'relvol', label: 'Rel. Volume' }].forEach(v => {
+        const btn = document.createElement('button');
+        btn.className = `period-btn${v.key === _regionView ? ' active' : ''}`;
+        btn.textContent = v.label;
+        btn.dataset.view = v.key;
+        btn.addEventListener('click', () => { if (v.key !== _regionView) switchRegionView(v.key); });
+        bar.appendChild(btn);
+    });
+}
+
+function switchRegionView(view) {
+    _regionView = view;
+    document.querySelectorAll('#regionViewBar .period-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.view === view));
+
+    const isRelvol = view === 'relvol';
+    document.getElementById('regionRelvolNote').style.display = isRelvol ? 'block' : 'none';
+    document.getElementById('regionDesc').textContent = isRelvol
+        ? 'Relative volume — avg daily $vol vs. 1Y baseline · 1.0× = at average · >1.5× elevated · MSCI ACWI shown as benchmark'
+        : 'Regional equity performance proxied via iShares ETFs · Prices in USD · MSCI ACWI shown as benchmark';
+
+    renderRegionTable();
+}
+
+function renderRegionTable() {
+    if (!_regionData) return;
+    const P        = getPeriods();
+    const isRelvol = _regionView === 'relvol';
+
+    const cols = [
+        { key: 'name',  label: 'Region',                                  left: true,  defaultDir: 'asc'  },
+        { key: 'etf',   label: 'ETF',                                     left: true,  defaultDir: 'asc'  },
+        { key: 'price', label: isRelvol ? 'Avg $Vol/Day' : 'Price (USD)', left: false, defaultDir: 'desc' },
+        { key: 'ytd',   label: 'YTD',  left: false, defaultDir: 'desc' },
+        { key: 'd1',    label: '1D',   left: false, defaultDir: 'desc' },
+        { key: 'w1',    label: '1W',   left: false, defaultDir: 'desc' },
+        { key: 'm1',    label: '1M',   left: false, defaultDir: 'desc' },
+        { key: 'm3',    label: '3M',   left: false, defaultDir: 'desc' },
+        { key: 'm6',    label: '6M',   left: false, defaultDir: 'desc' },
+        { key: 'y1',    label: '1Y',   left: false, defaultDir: 'desc' },
+    ];
+
+    buildSortHead(document.getElementById('regionHead'), cols, _regionSort, (col, defaultDir) => {
+        _regionSort.dir = _regionSort.col === col ? (_regionSort.dir === 'desc' ? 'asc' : 'desc') : defaultDir;
+        _regionSort.col = col;
+        renderRegionTable();
+    });
+
+    function getVal(i) {
+        const d = _regionData[i];
+        if (!d) return null;
+        switch (_regionSort.col) {
+            case 'name':  return REGIONS[i].name;
+            case 'etf':   return REGIONS[i].ticker;
+            case 'price': return isRelvol ? calcAvgDailyVol(d.history) : d.currentPrice ?? null;
+            case 'ytd':   return isRelvol ? calcRelVol(d.history, P.ytd) : ret(d.history, P.ytd, d.currentPrice);
+            case 'd1':    return isRelvol ? calcRelVol(d.history, P.d1)  : ret(d.history, P.d1,  d.currentPrice);
+            case 'w1':    return isRelvol ? calcRelVol(d.history, P.w1)  : ret(d.history, P.w1,  d.currentPrice);
+            case 'm1':    return isRelvol ? calcRelVol(d.history, P.m1)  : ret(d.history, P.m1,  d.currentPrice);
+            case 'm3':    return isRelvol ? calcRelVol(d.history, P.m3)  : ret(d.history, P.m3,  d.currentPrice);
+            case 'm6':    return isRelvol ? calcRelVol(d.history, P.m6)  : ret(d.history, P.m6,  d.currentPrice);
+            case 'y1':    return isRelvol ? calcRelVol(d.history, P.y1)  : ret(d.history, P.y1,  d.currentPrice);
+            default:      return null;
+        }
+    }
+
+    // Benchmarks always pinned to bottom; sort the rest
+    const nonBench = REGIONS.map((r, i) => i).filter(i => !REGIONS[i].isBenchmark);
+    const benchIdx = REGIONS.map((r, i) => i).filter(i =>  REGIONS[i].isBenchmark);
+    const order    = [...sortedOrder(nonBench.map(i => i), _regionSort, i => getVal(nonBench[i])).map(j => nonBench[j]), ...benchIdx];
+
+    const tbody = document.getElementById('regionBody');
+    tbody.innerHTML = '';
+    order.forEach(i => {
+        const region = REGIONS[i];
+        const d      = _regionData[i];
+        const tr     = document.createElement('tr');
+        if (region.isBenchmark) tr.className = 'benchmark-row';
+
+        const nameCell = `<td>${region.name}${region.isBenchmark ? '<span class="benchmark-badge">Benchmark</span>' : ''}</td>`;
+        const etfCell  = `<td><div class="tcol">
+            <span style="font-weight:600;color:${d ? 'var(--accent)' : 'var(--text2)'}">${region.ticker}</span>
+            <span class="tetf-name">${region.etfName}</span>
+        </div></td>`;
+
+        if (!d) {
+            tr.innerHTML = nameCell + etfCell + '<td class="muted">—</td>' + '<td class="muted">—</td>'.repeat(7);
+        } else if (isRelvol) {
+            const h = d.history;
+            tr.innerHTML = nameCell + etfCell +
+                `<td class="price">${fmtAUM(calcAvgDailyVol(h))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.ytd))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.d1))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.w1))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.m1))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.m3))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.m6))}</td>
+                 <td>${fmtRelVol(calcRelVol(h, P.y1))}</td>`;
+        } else {
+            const h = d.history;
+            tr.innerHTML = nameCell + etfCell +
+                `<td class="price">${fmtPrice(d.currentPrice)}</td>
+                 <td>${fmtPct(ret(h, P.ytd, d.currentPrice), true)}</td>
+                 <td>${fmtPct(ret(h, P.d1,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.w1,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.m1,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.m3,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.m6,  d.currentPrice))}</td>
+                 <td>${fmtPct(ret(h, P.y1,  d.currentPrice))}</td>`;
+        }
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadRegions() {
+    _regionData = await Promise.all(REGIONS.map(r => fetchSymbol(r.symbol)));
+    renderRegionTable();
+    document.getElementById('regionSrcTs').textContent = nowTs();
+}
+
+// ═══════════════════════════════════════════════════════════
+// CENTRAL BANK RATES  (static — update RATES[] to keep current)
+// ═══════════════════════════════════════════════════════════
+
+function loadRates() {
+    const grid = document.getElementById('ratesGrid');
+    grid.innerHTML = '';
+
+    RATES.forEach(cb => {
+        const arrow = cb.trend === 'cutting' ? '↓' : cb.trend === 'hiking' ? '↑' : '→';
+        const card  = document.createElement('div');
+        card.className = 'rate-card';
+        card.innerHTML = `
+            <div class="rate-bank">${cb.flag}&nbsp; ${cb.bank} &middot; ${cb.abbr}</div>
+            <div class="rate-country">${cb.country}</div>
+            <div class="rate-big">${cb.rate}%</div>
+            <div class="rate-name">${cb.rateName}</div>
+            <div class="rate-divider"></div>
+            <div class="rate-row">
+                <span>Rate as of</span>
+                <span class="rate-val">${cb.rateAsOf}</span>
+            </div>
+            <div class="rate-row">
+                <span>Last decision</span>
+                <span class="rate-val">${cb.lastDecision}</span>
+            </div>
+            <div class="rate-row">
+                <span>Next meeting</span>
+                <span class="rate-val">${cb.nextMeeting}</span>
+            </div>
+            <div class="rate-row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+                <span>Latest CPI (YoY)</span>
+                <span><span class="rate-cpi-val">${cb.cpi}%</span><span class="rate-cpi-src">${cb.cpiPeriod} &middot; ${cb.cpiSource}</span></span>
+            </div>
+            <div>
+                <span class="rate-trend ${cb.trend}">${arrow} ${cb.trendLabel}</span>
+            </div>
+            <div class="rate-note">Verify current rate and CPI at <i>${cb.verifyUrl}</i></div>`;
+        grid.appendChild(card);
+    });
+}
+
+// ═══════════════════════════════════════════════════════════
+// STATUS / INIT
+// ═══════════════════════════════════════════════════════════
+
+function setStatus(state, label) {
+    document.getElementById('liveDot').className = `live-dot ${state}`;
+    document.getElementById('liveLbl').textContent = label;
+}
+
+async function init() {
+    setStatus('loading', 'Loading market data…');
+    document.getElementById('ts').textContent = fmtDateStr(new Date());
+
+    loadRates();
+    buildPeriodBar();
+    buildSectorViewBar();
+    buildRegionViewBar();
+    initSearch();
+
+    await Promise.allSettled([loadChart(), loadMag7(), loadSectors(), loadRegions()]);
+
+    const loaded = Object.keys(_cache).length;
+
+    if (loaded === 0) {
+        setStatus('error', 'Data unavailable');
+        document.getElementById('alertBanner').classList.add('show');
+    } else {
+        setStatus('live', `${loaded} symbols loaded`);
+        document.getElementById('ts').textContent =
+            `Updated ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+    }
+}
+
+init();
+</script>
+</body>
+</html>
